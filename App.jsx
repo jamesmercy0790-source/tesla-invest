@@ -661,9 +661,13 @@ const OrdersPage = ({ setPage }) => {
   const userOrders = orders ? orders.filter(o => o.user_id === currentUser?.id) : [];
   const colors = ['Pearl White', 'Midnight Silver', 'Deep Blue', 'Solid Black', 'Red Multi-Coat', 'Ultra Red'];
 
+  const availableBalance = useAvailableBalance();
   const handleSubmit = () => {
     if (!form.fullName || !form.email || !form.phone || !form.address || !form.city || !form.country) {
       showToast('Please fill all required fields', 'error'); return;
+    }
+    if (selectedCar && availableBalance < selectedCar.price) {
+      showToast(`Insufficient balance. This car costs $${selectedCar.price.toLocaleString()} but you have $${availableBalance.toLocaleString()} available.`, 'error'); return;
     }
     addOrder({ ...form, carId: selectedCar.id, carName: selectedCar.name, carPrice: selectedCar.price });
     setSubmitted(true);
@@ -1000,6 +1004,7 @@ const PaymentModal = ({ title, amount, setAmount, minAmount, returnRate, onClose
 // ─── CAR DETAIL PAGE ─────────────────────────────────────────────────────────
 const CarDetailPage = ({ carId, setPage }) => {
   const { cars, currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
   const [showInvest, setShowInvest] = useState(false);
   const [amount, setAmount] = useState(10000);
   const car = cars.find(c => c.id === Number(carId));
@@ -1057,9 +1062,10 @@ const CarDetailPage = ({ carId, setPage }) => {
           planLabel="Standard"
           onClose={() => setShowInvest(false)}
           onConfirm={() => {
-            addInvestment({ carId: car.id, carName: car.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Pending', returns: (amount * 0.12).toFixed(2) });
+            if (amount > availableBalance) { showToast('Insufficient balance for this investment.', 'error'); return; }
+            addInvestment({ carId: car.id, carName: car.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (amount * 0.12).toFixed(2) });
             setShowInvest(false);
-            showToast('Payment submitted! Awaiting confirmation.', 'success');
+            showToast(`Successfully invested $${amount.toLocaleString()} in ${car.name}!`, 'success');
           }}
         />
       )}
@@ -1070,6 +1076,7 @@ const CarDetailPage = ({ carId, setPage }) => {
 // ─── INVEST PLANS ────────────────────────────────────────────────────────────
 const InvestPlans = ({ setPage, preview }) => {
   const { currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
   const [activeModal, setActiveModal] = useState(null);
   const [amount, setAmount] = useState(5000);
   const plans = [
@@ -1097,6 +1104,7 @@ const InvestPlans = ({ setPage, preview }) => {
               const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
               if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
               if (approved.length === 0) { showToast('You must make a payment and get it approved before investing.', 'error'); return; }
+              if (availableBalance < plan.minInvest) { showToast(\`Insufficient balance. You need $\${plan.minInvest.toLocaleString()} but have $\${availableBalance.toLocaleString()} available.\`, 'error'); return; }
               setAmount(plan.minInvest); setActiveModal(plan.id);
             }}>Start with {plan.name}</button>}
             {preview && <button className="btn btn-secondary btn-full" onClick={() => setPage('invest')}>Learn More</button>}
@@ -1113,9 +1121,10 @@ const InvestPlans = ({ setPage, preview }) => {
           planLabel={activePlan.name}
           onClose={() => setActiveModal(null)}
           onConfirm={() => {
-            addInvestment({ carId: null, carName: 'Portfolio Fund', amount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Pending', returns: (amount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
+            if (amount > availableBalance) { showToast(\`Insufficient balance. You have $\${availableBalance.toLocaleString()} available.\`, 'error'); return; }
+            addInvestment({ carId: null, carName: 'Portfolio Fund', amount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (amount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
             setActiveModal(null);
-            showToast(`Payment submitted for ${activePlan.name} plan! Awaiting confirmation.`, 'success');
+            showToast(\`Successfully invested $\${amount.toLocaleString()} in \${activePlan.name} plan!\`, 'success');
           }}
         />
       )}
@@ -1170,6 +1179,7 @@ const InvestPage = ({ setPage }) => {
 
 const ModelsInvestSection = ({ setPage }) => {
   const { cars, currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
   const [investCar, setInvestCar] = useState(null);
   const [amount, setAmount] = useState(5000);
   return (
@@ -1194,9 +1204,10 @@ const ModelsInvestSection = ({ setPage }) => {
           planLabel="Standard"
           onClose={() => setInvestCar(null)}
           onConfirm={() => {
-            addInvestment({ carId: investCar.id, carName: investCar.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Pending', returns: (amount * 0.12).toFixed(2) });
+            if (amount > availableBalance) { showToast('Insufficient balance for this investment.', 'error'); return; }
+            addInvestment({ carId: investCar.id, carName: investCar.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (amount * 0.12).toFixed(2) });
             setInvestCar(null);
-            showToast(`Payment submitted for ${investCar.name}! Awaiting confirmation.`, 'success');
+            showToast(`Successfully invested $${amount.toLocaleString()} in ${investCar.name}!`, 'success');
           }}
         />
       )}
@@ -1609,7 +1620,7 @@ const RegisterPage = ({ setPage }) => {
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const DashboardPage = ({ setPage }) => {
-  const { currentUser, investments, logout } = useApp();
+  const { currentUser, investments, payments, orders, logout } = useApp();
   const [tab, setTab] = useState('overview');
   const { appReady } = useApp();
   if (!appReady) return null;
@@ -1617,6 +1628,9 @@ const DashboardPage = ({ setPage }) => {
   const userInvestments = investments.filter(i => i.user_id === currentUser.id);
   const totalInvested = userInvestments.reduce((s, i) => s + Number(i.amount), 0);
   const totalReturns = userInvestments.reduce((s, i) => s + Number(i.returns), 0);
+  const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
+  const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || o.price || 0), 0);
+  const availableBalance = Math.max(0, totalDeposited - totalInvested - totalOrdered);
   const tabs = ['overview', 'portfolio', 'transactions'];
   return (
     <div className="dashboard">
@@ -1647,6 +1661,7 @@ const DashboardPage = ({ setPage }) => {
                   <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${totalReturns.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change positive">↑ Estimated Annual</div></div>
                   <div className="stat-card"><div className="stat-card-label">Active Investments</div><div className="stat-card-value">{userInvestments.length}</div><div className="stat-card-change" style={{ color: 'var(--muted)' }}>Positions Open</div></div>
                   <div className="stat-card"><div className="stat-card-label">Portfolio Value</div><div className="stat-card-value">${(totalInvested + totalReturns).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change positive">↑ {totalInvested > 0 ? ((totalReturns / totalInvested) * 100).toFixed(1) : '0'}% ROI</div></div>
+                  <div className="stat-card"><div className="stat-card-label">Available Balance</div><div className="stat-card-value" style={{ color: availableBalance > 0 ? 'var(--green)' : 'var(--muted)' }}>${availableBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change" style={{ color: 'var(--muted)' }}>Ready to Invest</div></div>
                 </div>
                 {userInvestments.length === 0 ? (
                   <div className="empty-state"><div className="empty-state-icon">💡</div><p style={{ marginBottom: 24 }}>You haven't made any investments yet.</p><button className="btn btn-primary" onClick={() => setPage('invest')}>Start Investing</button></div>
@@ -1702,6 +1717,24 @@ const DashboardPage = ({ setPage }) => {
       </div>
     </div>
   );
+};
+
+
+// ─── BALANCE HELPER ──────────────────────────────────────────────────────────
+// Available balance = total approved deposits - total invested - total ordered
+const useAvailableBalance = () => {
+  const { currentUser, payments, investments, orders } = useApp();
+  if (!currentUser) return 0;
+  const totalDeposited = payments
+    .filter(p => p.user_id === currentUser.id && p.status === 'Approved')
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const totalInvested = investments
+    .filter(i => i.user_id === currentUser.id)
+    .reduce((s, i) => s + Number(i.amount), 0);
+  const totalOrdered = orders
+    .filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled')
+    .reduce((s, o) => s + Number(o.car_price || o.price || 0), 0);
+  return Math.max(0, totalDeposited - totalInvested - totalOrdered);
 };
 
 // ─── ADMIN LOGIN ──────────────────────────────────────────────────────────────
