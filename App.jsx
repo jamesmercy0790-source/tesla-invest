@@ -824,6 +824,84 @@ const OrdersPage = ({ setPage }) => {
   );
 };
 
+
+// ─── INVEST FROM BALANCE MODAL ───────────────────────────────────────────────
+const InvestFromBalanceModal = ({ title, amount, setAmount, minAmount, returnRate, planLabel, onClose, onConfirm }) => {
+  const availableBalance = useAvailableBalance();
+  const maxAmount = Math.floor(availableBalance / 1000) * 1000 || availableBalance;
+  const isInsufficient = amount > availableBalance;
+  const isValid = amount >= (minAmount || 1000) && !isInsufficient;
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <div className="modal-title">{title}</div>
+
+        {/* Balance display */}
+        <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 2 }}>Available Balance</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div>
+          </div>
+          <div style={{ fontSize: 28 }}>💰</div>
+        </div>
+
+        {/* Amount slider */}
+        <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Select investment amount</div>
+        <div style={{ fontFamily: 'Rajdhani', fontSize: 40, fontWeight: 700, textAlign: 'center', color: isInsufficient ? 'var(--red)' : 'var(--white)', marginBottom: 12 }}>${amount.toLocaleString()}</div>
+        <input
+          type="range"
+          className="range-input"
+          min={minAmount || 1000}
+          max={Math.max(availableBalance, minAmount || 1000)}
+          step={100}
+          value={Math.min(amount, availableBalance)}
+          onChange={e => setAmount(Number(e.target.value))}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 20 }}>
+          <span>Min: ${(minAmount || 1000).toLocaleString()}</span>
+          <span>Max: ${availableBalance.toLocaleString()}</span>
+        </div>
+
+        {/* Insufficient balance warning */}
+        {isInsufficient && (
+          <div style={{ background: 'rgba(227,25,55,0.1)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: '#ff9999' }}>
+            ⚠ Insufficient balance. You have ${availableBalance.toLocaleString()} available but selected ${amount.toLocaleString()}.
+          </div>
+        )}
+
+        {/* Return estimate */}
+        {!isInsufficient && (
+          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.2)', borderRadius: 10, padding: 14, marginBottom: 24, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+            <span style={{ color: 'var(--muted)' }}>Estimated Annual Return ({returnRate})</span>
+            <span style={{ color: 'var(--green)', fontWeight: 700 }}>+${(amount * parseFloat(returnRate) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          </div>
+        )}
+
+        {/* Amount remaining after invest */}
+        {!isInsufficient && (
+          <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', marginBottom: 20 }}>
+            Remaining balance after investment: <strong style={{ color: 'var(--white)' }}>${(availableBalance - amount).toLocaleString()}</strong>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            style={{ flex: 1, opacity: isValid ? 1 : 0.5 }}
+            disabled={!isValid}
+            onClick={() => isValid && onConfirm(amount)}
+          >
+            {isInsufficient ? 'Insufficient Balance' : `Invest $${amount.toLocaleString()}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── PAYMENT MODAL (shared) ──────────────────────────────────────────────────
 const PaymentModal = ({ title, amount, setAmount, minAmount, returnRate, onClose, onConfirm, planLabel }) => {
   const { addPayment, currentUser } = useApp();
@@ -1053,7 +1131,7 @@ const CarDetailPage = ({ carId, setPage }) => {
         </div>
       </div>
       {showInvest && (
-        <PaymentModal
+        <InvestFromBalanceModal
           title={`Invest in ${car.name}`}
           amount={amount}
           setAmount={setAmount}
@@ -1061,11 +1139,10 @@ const CarDetailPage = ({ carId, setPage }) => {
           returnRate="12%"
           planLabel="Standard"
           onClose={() => setShowInvest(false)}
-          onConfirm={() => {
-            if (amount > availableBalance) { showToast('Insufficient balance for this investment.', 'error'); return; }
-            addInvestment({ carId: car.id, carName: car.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (amount * 0.12).toFixed(2) });
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: car.id, carName: car.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
             setShowInvest(false);
-            showToast(`Successfully invested $${amount.toLocaleString()} in ${car.name}!`, 'success');
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${car.name}!`, 'success');
           }}
         />
       )}
@@ -1112,7 +1189,7 @@ const InvestPlans = ({ setPage, preview }) => {
         ))}
       </div>
       {activeModal && activePlan && (
-        <PaymentModal
+        <InvestFromBalanceModal
           title={`${activePlan.name} Plan Investment`}
           amount={amount}
           setAmount={setAmount}
@@ -1120,11 +1197,10 @@ const InvestPlans = ({ setPage, preview }) => {
           returnRate={activePlan.returnRate}
           planLabel={activePlan.name}
           onClose={() => setActiveModal(null)}
-          onConfirm={() => {
-            if (amount > availableBalance) { showToast(`Insufficient balance. You have $${availableBalance.toLocaleString()} available.`, 'error'); return; }
-            addInvestment({ carId: null, carName: 'Portfolio Fund', amount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (amount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: null, carName: 'Portfolio Fund', amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (finalAmount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
             setActiveModal(null);
-            showToast(`Successfully invested $${amount.toLocaleString()} in ${activePlan.name} plan!`, 'success');
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${activePlan.name} plan!`, 'success');
           }}
         />
       )}
@@ -1195,7 +1271,7 @@ const ModelsInvestSection = ({ setPage }) => {
         }} />)}
       </div>
       {investCar && (
-        <PaymentModal
+        <InvestFromBalanceModal
           title={`Invest in ${investCar.name}`}
           amount={amount}
           setAmount={setAmount}
@@ -1203,11 +1279,10 @@ const ModelsInvestSection = ({ setPage }) => {
           returnRate="12%"
           planLabel="Standard"
           onClose={() => setInvestCar(null)}
-          onConfirm={() => {
-            if (amount > availableBalance) { showToast('Insufficient balance for this investment.', 'error'); return; }
-            addInvestment({ carId: investCar.id, carName: investCar.name, amount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (amount * 0.12).toFixed(2) });
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: investCar.id, carName: investCar.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
             setInvestCar(null);
-            showToast(`Successfully invested $${amount.toLocaleString()} in ${investCar.name}!`, 'success');
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${investCar.name}!`, 'success');
           }}
         />
       )}
