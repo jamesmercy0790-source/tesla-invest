@@ -185,3 +185,45 @@ export const dbUpdatePaymentStatus = async (id, status) => {
   if (error) { console.error('updatePaymentStatus:', error); return false; }
   return true;
 };
+
+// ─── WITHDRAWALS ─────────────────────────────────────────────────────────────
+
+export const dbGetWithdrawals = async (userId = null) => {
+  let query = supabase.from('withdrawals').select('*').order('date', { ascending: false });
+  if (userId) query = query.eq('user_id', userId);
+  const { data, error } = await query;
+  if (error) { console.error('getWithdrawals:', error); return []; }
+  return data;
+};
+
+export const dbInsertWithdrawal = async (w) => {
+  const { data, error } = await supabase.from('withdrawals').insert([w]).select().single();
+  if (error) { console.error('insertWithdrawal:', error); return null; }
+  return data;
+};
+
+export const dbUpdateWithdrawalStatus = async (id, status) => {
+  const { error } = await supabase.from('withdrawals').update({ status }).eq('id', id);
+  if (error) { console.error('updateWithdrawalStatus:', error); return false; }
+  return true;
+};
+
+// ─── BROADCASTS ──────────────────────────────────────────────────────────────
+
+export const dbGetBroadcasts = async () => {
+  const { data, error } = await supabase.from('broadcasts').select('*').order('created_at', { ascending: false });
+  if (error) { console.error('getBroadcasts:', error); return []; }
+  return data;
+};
+
+export const dbInsertBroadcast = async (msg) => {
+  const { data, error } = await supabase.from('broadcasts').insert([msg]).select().single();
+  if (error) { console.error('insertBroadcast:', error); return null; }
+  return data;
+};
+
+export const dbDeleteBroadcast = async (id) => {
+  const { error } = await supabase.from('broadcasts').delete().eq('id', id);
+  if (error) { console.error('deleteBroadcast:', error); return false; }
+  return true;
+};

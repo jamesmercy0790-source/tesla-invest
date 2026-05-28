@@ -6,6 +6,8 @@ import {
   dbGetInvestments, dbInsertInvestment,
   dbGetOrders, dbInsertOrder, dbUpdateOrderStatus,
   dbGetPayments, dbInsertPayment, dbUpdatePaymentStatus,
+  dbGetWithdrawals, dbInsertWithdrawal, dbUpdateWithdrawalStatus,
+  dbGetBroadcasts, dbInsertBroadcast, dbDeleteBroadcast,
 } from './supabase.js';
 
 // ─── CONTEXT ────────────────────────────────────────────────────────────────
@@ -54,6 +56,13 @@ const GlobalStyle = () => (
       --border: #2a2a2a; --border-light: #333;
       --text: #f0f0f0; --muted: #888; --white: #ffffff;
       --gold: #c9a84c; --green: #00c853; --blue: #1565c0;
+    }
+    body.light {
+      --black: #f5f5f5; --dark: #ebebeb; --card: #ffffff;
+      --border: #ddd; --border-light: #ccc;
+      --text: #111111; --muted: #666; --white: #000000;
+    }
+    body { transition: background 0.3s, color 0.3s; }
     }
     html { scroll-behavior: smooth; }
     body { background: var(--black); color: var(--text); font-family: 'Exo 2', sans-serif; min-height: 100vh; overflow-x: hidden; }
@@ -365,6 +374,7 @@ const Navbar = ({ page, setPage }) => {
             ))}
           </div>
           <div className="nav-actions">
+            <ThemeToggle />
             {currentUser ? (
               <>
                 <button className="btn-nav btn-nav-ghost" onClick={() => setPage('dashboard')}>Dashboard</button>
@@ -387,6 +397,7 @@ const Navbar = ({ page, setPage }) => {
         {currentUser ? (
           <>
             <span className="mobile-link" onClick={() => { setPage('dashboard'); setMenuOpen(false); }}>Dashboard</span>
+            <span className="mobile-link" onClick={() => { setPage('withdraw'); setMenuOpen(false); }}>Withdraw</span>
             <span className="mobile-link" onClick={() => { logout(); setMenuOpen(false); }}>Logout</span>
           </>
         ) : (
@@ -395,6 +406,7 @@ const Navbar = ({ page, setPage }) => {
             <span className="mobile-link" onClick={() => { setPage('register'); setMenuOpen(false); }}>Register</span>
           </>
         )}
+        <div style={{ padding: '8px 16px' }}><ThemeToggle /></div>
       </div>
     </>
   );
@@ -749,56 +761,67 @@ const OrdersPage = ({ setPage }) => {
           )}
 
           {payStatus === 'approved' && selectedCar && !submitted && (
-            <>
-              <button className="btn btn-secondary btn-sm" style={{ marginBottom: 28 }} onClick={() => setSelectedCar(null)}>← Change Model</button>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'start' }}>
-                {/* Order Form */}
-                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
-                  <div style={{ marginBottom: 8 }}><span className="section-tag">Step 2</span></div>
-                  <h2 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 24 }}>Your Details</h2>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Full Name *</label><input className="form-input" value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} placeholder="John Doe" /></div>
-                    <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@email.com" /></div>
-                    <div className="form-group"><label className="form-label">Phone *</label><input className="form-input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 234 567 8900" /></div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Delivery Address *</label><input className="form-input" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Street address" /></div>
-                    <div className="form-group"><label className="form-label">City *</label><input className="form-input" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="City" /></div>
-                    <div className="form-group"><label className="form-label">Country *</label><input className="form-input" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} placeholder="Country" /></div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                      <label className="form-label">Preferred Color</label>
-                      <select className="form-select" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })}>
-                        {colors.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Additional Notes</label><textarea className="form-textarea" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Any special requests or requirements..." rows={3} /></div>
-                  </div>
-                  <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={handleSubmit}>Place Order 🚗</button>
+            <div style={{ maxWidth: 600, margin: '0 auto' }}>
+              {/* Selected car summary */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', marginBottom: 24 }}>
+                <div style={{ height: 180, overflow: 'hidden' }}>
+                  <img src={selectedCar.image} alt={selectedCar.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.src = 'https://via.placeholder.com/600x300/1a1a1a/555?text=' + selectedCar.name; }} />
                 </div>
-
-                {/* Order Summary */}
-                <div style={{ position: 'sticky', top: 90 }}>
-                  <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
-                    <div style={{ height: 200, overflow: 'hidden' }}>
-                      <img src={selectedCar.image} alt={selectedCar.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.src = 'https://via.placeholder.com/600x300/1a1a1a/555?text=' + selectedCar.name; }} />
-                    </div>
-                    <div style={{ padding: 24 }}>
-                      <div style={{ fontFamily: 'Rajdhani', fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{selectedCar.name}</div>
-                      <div style={{ fontSize: 22, color: 'var(--red)', fontWeight: 700, marginBottom: 20 }}>${Number(selectedCar.price).toLocaleString()}</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {Object.entries(selectedCar.specs || {}).map(([k, v]) => (
-                          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
-                            <span style={{ color: 'var(--muted)', textTransform: 'capitalize' }}>{k.replace(/([A-Z])/g, ' $1')}</span>
-                            <span style={{ fontWeight: 600 }}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700 }}>{selectedCar.name}</div>
+                    <div style={{ fontSize: 18, color: 'var(--red)', fontWeight: 700 }}>${Number(selectedCar.price).toLocaleString()}</div>
                   </div>
-                  <div style={{ background: 'rgba(0,200,83,0.06)', border: '1px solid rgba(0,200,83,0.2)', borderRadius: 10, padding: 16, fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-                    ✅ Your payment has been approved. After placing your order, our team will contact you within 24–48 hours to confirm delivery details.
-                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setSelectedCar(null)}>← Change</button>
                 </div>
               </div>
-            </>
+
+              {/* Order Form — single column, large inputs for mobile */}
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+                <div style={{ marginBottom: 8 }}><span className="section-tag">Step 2</span></div>
+                <h2 style={{ fontFamily: 'Rajdhani', fontSize: 26, fontWeight: 700, marginBottom: 24 }}>Your Details</h2>
+
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} value={form.fullName} onChange={e => setForm({ ...form, fullName: e.target.value })} placeholder="John Doe" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email Address *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="you@email.com" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone Number *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 234 567 8900" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Delivery Address *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Street address" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">City *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="City" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Country *</label>
+                  <input className="form-input" style={{ fontSize: 16, padding: '14px 16px' }} value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} placeholder="Country" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Preferred Color</label>
+                  <select className="form-select" style={{ fontSize: 16, padding: '14px 16px' }} value={form.color} onChange={e => setForm({ ...form, color: e.target.value })}>
+                    {colors.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Additional Notes</label>
+                  <textarea className="form-textarea" style={{ fontSize: 16, padding: '14px 16px' }} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Any special requests..." rows={3} />
+                </div>
+
+                <div style={{ background: 'rgba(0,200,83,0.06)', border: '1px solid rgba(0,200,83,0.2)', borderRadius: 10, padding: 14, fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.7 }}>
+                  ✅ Payment approved. Our team will contact you within 24–48 hours after ordering.
+                </div>
+                <button className="btn btn-primary btn-full" style={{ fontSize: 17, padding: '16px 24px' }} onClick={handleSubmit}>Place Order 🚗</button>
+              </div>
+            </div>
           )}
 
           {submitted && (
@@ -1718,7 +1741,7 @@ const DashboardPage = ({ setPage }) => {
   const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
   const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || o.price || 0), 0);
   const availableBalance = Math.max(0, totalDeposited - totalInvested - totalOrdered);
-  const tabs = ['overview', 'portfolio', 'transactions'];
+  const tabs = ['overview', 'portfolio', 'payments', 'orders', 'transactions'];
   return (
     <div className="dashboard">
       <div className="container">
@@ -1730,11 +1753,15 @@ const DashboardPage = ({ setPage }) => {
               <div className="sidebar-email">{currentUser.email}</div>
             </div>
             <nav className="sidebar-nav">
-              {tabs.map(t => <div key={t} className={`sidebar-item${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{t === 'overview' ? '📊' : t === 'portfolio' ? '💼' : '📋'} {t.charAt(0).toUpperCase() + t.slice(1)}</div>)}
+              {tabs.map(t => {
+                const icons = { overview: '📊', portfolio: '💼', payments: '💳', orders: '🛒', transactions: '📋' };
+                return <div key={t} className={`sidebar-item${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{icons[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</div>;
+              })}
               <div className="sidebar-item" onClick={() => setPage('invest')}>⚡ Invest More</div>
-              <div className="sidebar-item" onClick={() => setPage('payment')}>💳 Make Payment</div>
+              <div className="sidebar-item" onClick={() => setPage('payment')}>💰 Deposit</div>
+              <div className="sidebar-item" onClick={() => setPage('withdraw')}>💸 Withdraw</div>
               <div className="sidebar-item" onClick={() => setPage('models')}>🚗 Browse Models</div>
-              <div className="sidebar-item" onClick={() => setPage('orders')}>🛒 Order a Car</div>
+              <div className="sidebar-item" onClick={() => setPage('orders')}>📦 Order a Car</div>
               <div className="sidebar-item" onClick={() => setPage('contact')}>💬 Support</div>
               <div className="sidebar-item" onClick={() => { logout(); setPage('home'); }}>🚪 Logout</div>
             </nav>
@@ -1768,35 +1795,91 @@ const DashboardPage = ({ setPage }) => {
             {tab === 'portfolio' && (
               <>
                 <div className="dash-title">My Portfolio</div>
+                <InvestmentChart investments={userInvestments} />
                 {userInvestments.length === 0 ? (
                   <div className="empty-state"><div className="empty-state-icon">📭</div><p style={{ marginBottom: 24 }}>No investments in your portfolio yet.</p><button className="btn btn-primary" onClick={() => setPage('invest')}>Make Your First Investment</button></div>
                 ) : userInvestments.map((inv, i) => (
                   <div key={i} className="investment-item">
-                    <div><div style={{ fontWeight: 600 }}>{inv.carName}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{inv.date}</div></div>
+                    <div><div style={{ fontWeight: 600 }}>{inv.car_name || inv.carName}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{inv.date}</div></div>
                     <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Invested</div><div style={{ fontWeight: 600 }}>${Number(inv.amount).toLocaleString()}</div></div>
                     <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Returns</div><div className="positive" style={{ fontWeight: 600 }}>+${Number(inv.returns).toLocaleString()}</div></div>
                     <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Plan</div><span className="badge badge-blue">{inv.plan}</span></div>
-                    <span className="badge badge-green">Active</span>
+                    <span className="badge badge-green">{inv.status || 'Active'}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            {tab === 'payments' && (
+              <>
+                <div className="dash-title">Payment History</div>
+                {payments.filter(p => p.user_id === currentUser.id).length === 0 ? (
+                  <div className="empty-state"><div className="empty-state-icon">💳</div><p style={{ marginBottom: 24 }}>No payments yet.</p><button className="btn btn-primary" onClick={() => setPage('payment')}>Make a Deposit</button></div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {payments.filter(p => p.user_id === currentUser.id).map((p, i) => (
+                      <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                          <div style={{ fontSize: 28 }}>{p.method === 'BTC' || p.coin === 'BTC' ? '₿' : p.method === 'ETH' || p.coin === 'ETH' ? 'Ξ' : '💵'}</div>
+                          <div>
+                            <div style={{ fontWeight: 600, marginBottom: 2 }}>${Number(p.amount).toLocaleString()} deposit</div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>{p.method || p.coin} · {p.date}</div>
+                            {p.plan && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Plan: {p.plan}</div>}
+                          </div>
+                        </div>
+                        <span className={`badge ${p.status === 'Approved' ? 'badge-green' : p.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{p.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {tab === 'orders' && (
+              <>
+                <div className="dash-title">My Orders</div>
+                {orders.filter(o => o.user_id === currentUser.id).length === 0 ? (
+                  <div className="empty-state"><div className="empty-state-icon">🚗</div><p style={{ marginBottom: 24 }}>No orders yet.</p><button className="btn btn-primary" onClick={() => setPage('orders')}>Order a Tesla</button></div>
+                ) : orders.filter(o => o.user_id === currentUser.id).map((ord, i) => (
+                  <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <div style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{ord.car_name || ord.carName}</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Ordered {ord.date} · ${Number(ord.car_price || ord.price || 0).toLocaleString()}</div>
+                      </div>
+                      <span className={`badge ${ord.status === 'Delivered' ? 'badge-green' : ord.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`}>{ord.status}</span>
+                    </div>
+                    <OrderTracker order={ord} />
                   </div>
                 ))}
               </>
             )}
             {tab === 'transactions' && (
               <>
-                <div className="dash-title">Transactions</div>
-                {userInvestments.length === 0 ? (
-                  <div className="empty-state"><div className="empty-state-icon">📋</div><p>No transactions yet.</p></div>
-                ) : (
-                  <div className="data-table">
-                    <div className="table-header"><div className="table-title">Transaction History</div></div>
-                    <table>
-                      <thead><tr><th>#</th><th>Asset</th><th>Date</th><th>Amount</th><th>Plan</th><th>Returns</th></tr></thead>
-                      <tbody>{userInvestments.map((inv, i) => (
-                        <tr key={i}><td style={{ color: 'var(--muted)' }}>#{i + 1}</td><td>{inv.carName}</td><td>{inv.date}</td><td>${Number(inv.amount).toLocaleString()}</td><td>{inv.plan}</td><td className="positive">+${Number(inv.returns).toLocaleString()}</td></tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                )}
+                <div className="dash-title">All Transactions</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[...payments.filter(p => p.user_id === currentUser.id).map(p => ({ ...p, type: 'deposit' })),
+                    ...investments.filter(i => i.user_id === currentUser.id).map(i => ({ ...i, type: 'investment' })),
+                    ...withdrawals.filter(w => w.user_id === currentUser.id).map(w => ({ ...w, type: 'withdrawal' }))
+                  ].sort((a, b) => new Date(b.date) - new Date(a.date)).map((tx, i) => (
+                    <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div style={{ fontSize: 22 }}>{tx.type === 'deposit' ? '⬇️' : tx.type === 'investment' ? '📈' : '⬆️'}</div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>{tx.type === 'deposit' ? 'Deposit' : tx.type === 'investment' ? `Invested in ${tx.car_name || tx.carName}` : 'Withdrawal'}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{tx.date} · {tx.method || tx.plan || tx.coin || ''}</div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700, color: tx.type === 'deposit' ? 'var(--green)' : tx.type === 'withdrawal' ? 'var(--red)' : 'var(--text)' }}>
+                          {tx.type === 'deposit' ? '+' : '-'}${Number(tx.amount).toLocaleString()}
+                        </div>
+                        <span className={`badge ${tx.status === 'Approved' || tx.status === 'Active' ? 'badge-green' : tx.status === 'Rejected' || tx.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`} style={{ fontSize: 10 }}>{tx.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {payments.filter(p => p.user_id === currentUser.id).length === 0 && investments.filter(i => i.user_id === currentUser.id).length === 0 && (
+                    <div className="empty-state"><div className="empty-state-icon">📋</div><p>No transactions yet.</p></div>
+                  )}
+                </div>
               </>
             )}
           </main>
@@ -1857,7 +1940,9 @@ const AdminLoginPage = ({ setPage }) => {
 
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 const AdminPanel = ({ setPage }) => {
-  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, updatePaymentStatus, updateOrderStatus, showToast, setAdminLoggedIn } = useApp();
+  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, updatePaymentStatus, updateOrderStatus, updateWithdrawalStatus, addBroadcast, deleteBroadcast, showToast, setAdminLoggedIn } = useApp();
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [section, setSection] = useState('overview');
   const [editCar, setEditCar] = useState(null);
   const [showAddCar, setShowAddCar] = useState(false);
@@ -1896,6 +1981,8 @@ const AdminPanel = ({ setPage }) => {
     { id: 'investments', icon: '💰', label: 'Investments' },
     { id: 'payments', icon: '🧾', label: 'Payments' },
     { id: 'orders', icon: '🛒', label: 'Car Orders' },
+    { id: 'withdrawals', icon: '💸', label: 'Withdrawals' },
+    { id: 'broadcasts', icon: '📢', label: 'Broadcasts' },
   ];
 
   return (
@@ -2030,16 +2117,17 @@ const AdminPanel = ({ setPage }) => {
                               <div style={{ fontSize: 13, marginTop: 8 }}><span style={{ color: 'var(--muted)' }}>Delivery Address: </span><span>{ord.address}</span></div>
                               {ord.notes && <div style={{ fontSize: 13, marginTop: 4 }}><span style={{ color: 'var(--muted)' }}>Notes: </span><span>{ord.notes}</span></div>}
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {ord.status === 'Pending' && (
-                                <>
-                                  <button className="btn btn-success btn-sm" onClick={() => updateOrderStatus(ord.id, 'Confirmed')}>✓ Confirm</button>
-                                  <button className="btn btn-danger btn-sm" onClick={() => updateOrderStatus(ord.id, 'Cancelled')}>✕ Cancel</button>
-                                </>
-                              )}
-                              {ord.status !== 'Pending' && (
-                                <button className="btn btn-secondary btn-sm" onClick={() => updateOrderStatus(ord.id, 'Pending')}>↺ Reset</button>
-                              )}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 120 }}>
+                              <select className="form-select" style={{ fontSize: 12, padding: '6px 8px' }}
+                                value={ord.status}
+                                onChange={e => updateOrderStatus(ord.id, e.target.value)}>
+                                <option value="Pending">Pending</option>
+                                <option value="Confirmed">Confirmed</option>
+                                <option value="Processing">Processing</option>
+                                <option value="Shipped">Shipped</option>
+                                <option value="Delivered">Delivered</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
                             </div>
                           </div>
                         </div>
@@ -2115,6 +2203,90 @@ const AdminPanel = ({ setPage }) => {
                 )}
               </div>
             )}
+
+            {section === 'withdrawals' && (
+              <div className="admin-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div className="admin-card-title" style={{ marginBottom: 0 }}>Withdrawal Requests ({withdrawals.length})</div>
+                  <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+                    <span className="badge badge-gold">Pending: {withdrawals.filter(w => w.status === 'Pending').length}</span>
+                    <span className="badge badge-green">Approved: {withdrawals.filter(w => w.status === 'Approved').length}</span>
+                  </div>
+                </div>
+                {withdrawals.length === 0 ? (
+                  <div className="empty-state"><div className="empty-state-icon">💸</div><p>No withdrawal requests yet.</p></div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {withdrawals.slice().reverse().map(w => (
+                      <div key={w.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                        <div>
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'Rajdhani', fontSize: 17, fontWeight: 700 }}>{w.user_name}</span>
+                            <span style={{ fontSize: 12, color: 'var(--muted)' }}>{w.user_email}</span>
+                            <span className={`badge ${w.status === 'Approved' ? 'badge-green' : w.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{w.status}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 20, fontSize: 13, flexWrap: 'wrap' }}>
+                            <div><span style={{ color: 'var(--muted)' }}>Amount: </span><strong style={{ color: 'var(--green)' }}>${Number(w.amount).toLocaleString()}</strong></div>
+                            <div><span style={{ color: 'var(--muted)' }}>Method: </span><span>{w.method}</span></div>
+                            <div><span style={{ color: 'var(--muted)' }}>Date: </span><span>{w.date}</span></div>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontFamily: 'monospace', wordBreak: 'break-all' }}>To: {w.wallet_address}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {w.status === 'Pending' && (
+                            <>
+                              <button className="btn btn-success btn-sm" onClick={() => updateWithdrawalStatus(w.id, 'Approved')}>✓ Approve</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => updateWithdrawalStatus(w.id, 'Rejected')}>✕ Reject</button>
+                            </>
+                          )}
+                          {w.status !== 'Pending' && (
+                            <button className="btn btn-secondary btn-sm" onClick={() => updateWithdrawalStatus(w.id, 'Pending')}>↺ Reset</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {section === 'broadcasts' && (
+              <div className="admin-card">
+                <div className="admin-card-title">Send Broadcast Message</div>
+                <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 20 }}>Send an announcement that all users will see as a banner at the top of the site.</p>
+                <div className="form-group">
+                  <label className="form-label">Message</label>
+                  <textarea className="form-input" rows={3} placeholder="e.g. New investment plans now available! Check them out today." value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} style={{ resize: 'vertical' }} />
+                </div>
+                <button className="btn btn-primary" disabled={!broadcastMsg.trim() || broadcastLoading} onClick={async () => {
+                  setBroadcastLoading(true);
+                  const saved = await addBroadcast(broadcastMsg.trim());
+                  setBroadcastLoading(false);
+                  if (saved) { showToast('Broadcast sent!', 'success'); setBroadcastMsg(''); }
+                  else showToast('Failed to send broadcast', 'error');
+                }}>
+                  {broadcastLoading ? 'Sending...' : '📢 Send Broadcast'}
+                </button>
+
+                {broadcasts.length > 0 && (
+                  <div style={{ marginTop: 32 }}>
+                    <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Active Broadcasts</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {broadcasts.map(b => (
+                        <div key={b.id} style={{ background: 'rgba(227,25,55,0.06)', border: '1px solid rgba(227,25,55,0.2)', borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 14, marginBottom: 4 }}>{b.message}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{new Date(b.created_at).toLocaleString()}</div>
+                          </div>
+                          <button className="btn btn-danger btn-sm" onClick={() => deleteBroadcast(b.id)}>Delete</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       </div>
@@ -2215,6 +2387,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => LS.get('tesla_session', null) || null);
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
   const [appReady, setAppReady] = useState(false);
+  const [theme, setTheme] = useState(() => LS.get('tesla_theme', 'dark') || 'dark');
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [broadcasts, setBroadcasts] = useState([]);
+
+  // Apply theme class to body
+  useEffect(() => {
+    document.body.className = theme === 'light' ? 'light' : '';
+    LS.set('tesla_theme', theme);
+  }, [theme]);
 
   // ── LOAD ALL DATA FROM SUPABASE ON MOUNT ────────────────────────────────────
   useEffect(() => {
@@ -2230,16 +2411,20 @@ export default function App() {
       }
 
       // Load users, investments, orders, payments
-      const [usersData, investmentsData, ordersData, paymentsData] = await Promise.all([
+      const [usersData, investmentsData, ordersData, paymentsData, withdrawalsData, broadcastsData] = await Promise.all([
         dbGetUsers(),
         dbGetInvestments(),
         dbGetOrders(),
         dbGetPayments(),
+        dbGetWithdrawals(),
+        dbGetBroadcasts(),
       ]);
       setUsers(usersData);
       setInvestments(investmentsData);
       setOrders(ordersData);
       setPayments(paymentsData);
+      setWithdrawals(withdrawalsData);
+      setBroadcasts(broadcastsData);
 
       setAppReady(true);
     };
@@ -2318,6 +2503,30 @@ export default function App() {
     if (ok) setPayments(prev => prev.map(p => p.id === id ? { ...p, status } : p));
   };
 
+  const addWithdrawal = async (w) => {
+    const record = { ...w, user_id: currentUser?.id, user_name: currentUser?.name, user_email: currentUser?.email, status: 'Pending', date: new Date().toISOString().split('T')[0] };
+    const saved = await dbInsertWithdrawal(record);
+    if (saved) setWithdrawals(prev => [saved, ...prev]);
+    return saved;
+  };
+
+  const updateWithdrawalStatus = async (id, status) => {
+    const ok = await dbUpdateWithdrawalStatus(id, status);
+    if (ok) setWithdrawals(prev => prev.map(w => w.id === id ? { ...w, status } : w));
+  };
+
+  const addBroadcast = async (msg) => {
+    const record = { message: msg, created_at: new Date().toISOString() };
+    const saved = await dbInsertBroadcast(record);
+    if (saved) setBroadcasts(prev => [saved, ...prev]);
+    return saved;
+  };
+
+  const deleteBroadcast = async (id) => {
+    const ok = await dbDeleteBroadcast(id);
+    if (ok) setBroadcasts(prev => prev.filter(b => b.id !== id));
+  };
+
   const noNavPages = ['login', 'register', 'admin_login'];
   const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard'];
 
@@ -2341,6 +2550,7 @@ export default function App() {
     if (page === 'login') return <LoginPage setPage={setPage} />;
     if (page === 'register') return <RegisterPage setPage={setPage} />;
     if (page === 'dashboard') return <DashboardPage setPage={setPage} />;
+    if (page === 'withdraw') return <WithdrawPage setPage={setPage} />;
     if (page === 'admin_login') return <AdminLoginPage setPage={setPage} />;
     if (page === 'admin') return <AdminPanel setPage={setPage} />;
     if (page.startsWith('car_')) return <CarDetailPage carId={page.replace('car_', '')} setPage={setPage} />;
@@ -2348,8 +2558,8 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus, addOrder, updateOrderStatus, showToast, appReady }}>
-      <GlobalStyle />
+    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus, addOrder, updateOrderStatus, addWithdrawal, updateWithdrawalStatus, addBroadcast, deleteBroadcast, showToast, appReady, theme, setTheme }}>
+      <GlobalStyle theme={theme} />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
       {renderPage()}
       {!noFooterPages.includes(page) && appReady && <Footer setPage={setPage} />}
@@ -2357,3 +2567,209 @@ export default function App() {
     </AppContext.Provider>
   );
 }
+
+// ─── THEME TOGGLE BUTTON ─────────────────────────────────────────────────────
+const ThemeToggle = () => {
+  const { theme, setTheme } = useApp();
+  return (
+    <button
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      style={{
+        background: 'transparent', border: '1px solid var(--border-light)',
+        borderRadius: 20, padding: '6px 14px', cursor: 'pointer',
+        color: 'var(--text)', fontSize: 16, display: 'flex', alignItems: 'center', gap: 6,
+        transition: 'all 0.2s',
+      }}
+      title="Toggle theme"
+    >
+      {theme === 'dark' ? '☀️' : '🌙'}
+    </button>
+  );
+};
+
+// ─── INVESTMENT HISTORY CHART ─────────────────────────────────────────────────
+const InvestmentChart = ({ investments }) => {
+  if (!investments || investments.length === 0) return null;
+  const sorted = [...investments].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let cumulative = 0;
+  const points = sorted.map(inv => {
+    cumulative += Number(inv.amount);
+    return { date: inv.date, amount: cumulative, label: inv.car_name || 'Portfolio' };
+  });
+  const max = Math.max(...points.map(p => p.amount));
+  const width = 500, height = 180, padL = 60, padR = 20, padT = 20, padB = 40;
+  const w = width - padL - padR;
+  const h = height - padT - padB;
+  const toX = i => padL + (i / (points.length - 1 || 1)) * w;
+  const toY = v => padT + h - (v / (max || 1)) * h;
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(p.amount)}`).join(' ');
+  const areaD = `${pathD} L ${toX(points.length - 1)} ${padT + h} L ${toX(0)} ${padT + h} Z`;
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+      <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, marginBottom: 16 }}>📈 Portfolio Growth</div>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto' }}>
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#E31937" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#E31937" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+          <g key={i}>
+            <line x1={padL} y1={padT + h * t} x2={padL + w} y2={padT + h * t} stroke="var(--border)" strokeWidth="1" />
+            <text x={padL - 8} y={padT + h * t + 4} textAnchor="end" fontSize="10" fill="var(--muted)">${((max * (1 - t)) / 1000).toFixed(0)}k</text>
+          </g>
+        ))}
+        <path d={areaD} fill="url(#chartGrad)" />
+        <path d={pathD} fill="none" stroke="#E31937" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(p.amount)} r="4" fill="#E31937" stroke="var(--card)" strokeWidth="2" />
+        ))}
+        {points.map((p, i) => (
+          <text key={i} x={toX(i)} y={padT + h + 28} textAnchor="middle" fontSize="9" fill="var(--muted)">{p.date?.slice(5)}</text>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+// ─── ORDER TRACKING STEPPER ───────────────────────────────────────────────────
+const ORDER_STAGES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
+const OrderTracker = ({ order }) => {
+  const stageIndex = ORDER_STAGES.indexOf(order.status);
+  const activeIndex = stageIndex === -1 ? 0 : stageIndex;
+  if (order.status === 'Cancelled') return (
+    <div style={{ background: 'rgba(192,57,43,0.1)', border: '1px solid rgba(192,57,43,0.3)', borderRadius: 10, padding: 14, fontSize: 13, color: '#ff9999', textAlign: 'center' }}>❌ This order was cancelled</div>
+  );
+  return (
+    <div style={{ margin: '12px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 2, background: 'var(--border)', zIndex: 0 }} />
+        <div style={{ position: 'absolute', top: 14, left: '10%', width: `${(activeIndex / (ORDER_STAGES.length - 1)) * 80}%`, height: 2, background: 'var(--green)', zIndex: 1, transition: 'width 0.5s' }} />
+        {ORDER_STAGES.map((stage, i) => (
+          <div key={stage} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', zIndex: 2 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: i <= activeIndex ? 'var(--green)' : 'var(--border)', border: `2px solid ${i <= activeIndex ? 'var(--green)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: i <= activeIndex ? 'var(--black)' : 'var(--muted)', fontWeight: 700, transition: 'all 0.3s' }}>
+              {i < activeIndex ? '✓' : i + 1}
+            </div>
+            <div style={{ fontSize: 9, marginTop: 6, color: i <= activeIndex ? 'var(--text)' : 'var(--muted)', textAlign: 'center', fontWeight: i === activeIndex ? 700 : 400 }}>{stage}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── BROADCAST BANNER ─────────────────────────────────────────────────────────
+const BroadcastBanner = () => {
+  const { broadcasts } = useApp();
+  const [dismissed, setDismissed] = useState(() => LS.get('dismissed_broadcasts', []));
+  const active = broadcasts.filter(b => !dismissed.includes(b.id));
+  if (active.length === 0) return null;
+  const latest = active[0];
+  const dismiss = () => {
+    const newDismissed = [...dismissed, latest.id];
+    setDismissed(newDismissed);
+    LS.set('dismissed_broadcasts', newDismissed);
+  };
+  return (
+    <div style={{ background: 'linear-gradient(90deg, rgba(227,25,55,0.15), rgba(201,168,76,0.1))', borderBottom: '1px solid rgba(227,25,55,0.3)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'fixed', top: 70, left: 0, right: 0, zIndex: 998 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text)', flex: 1 }}>
+        <span style={{ fontSize: 16 }}>📢</span>
+        <span>{latest.message}</span>
+      </div>
+      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>✕</button>
+    </div>
+  );
+};
+
+// ─── WITHDRAWAL PAGE ──────────────────────────────────────────────────────────
+const WithdrawPage = ({ setPage }) => {
+  const { currentUser, payments, investments, orders, withdrawals, addWithdrawal, showToast } = useApp();
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('BTC');
+  const [wallet, setWallet] = useState('');
+  const [loading, setLoading] = useState(false);
+  if (!currentUser) { setPage('login'); return null; }
+  const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
+  const totalInvested = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.amount), 0);
+  const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || 0), 0);
+  const totalReturns = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.returns), 0);
+  const availableBalance = Math.max(0, totalDeposited - totalInvested - totalOrdered);
+  const withdrawable = availableBalance + totalReturns;
+  const userWithdrawals = withdrawals.filter(w => w.user_id === currentUser.id);
+
+  const handleSubmit = async () => {
+    const amt = Number(amount);
+    if (!amt || amt <= 0) { showToast('Enter a valid amount', 'error'); return; }
+    if (amt > withdrawable) { showToast(`Amount exceeds withdrawable balance of $${withdrawable.toLocaleString()}`, 'error'); return; }
+    if (!wallet.trim()) { showToast('Enter your wallet address', 'error'); return; }
+    setLoading(true);
+    const saved = await addWithdrawal({ amount: amt, method, wallet_address: wallet });
+    setLoading(false);
+    if (saved) { showToast('Withdrawal request submitted! Admin will process within 24–48hrs.', 'success'); setAmount(''); setWallet(''); }
+    else showToast('Failed to submit withdrawal. Try again.', 'error');
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header"><h1>Withdrawal Request</h1><p>Withdraw your available balance or returns</p></div>
+      <section className="section" style={{ paddingTop: 40 }}>
+        <div className="container" style={{ maxWidth: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
+            <div className="stat-card"><div className="stat-card-label">Available Balance</div><div className="stat-card-value" style={{ color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div></div>
+            <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${totalReturns.toLocaleString()}</div></div>
+          </div>
+          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--muted)', fontSize: 14 }}>Total Withdrawable</span>
+            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${withdrawable.toLocaleString()}</span>
+          </div>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
+            <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>New Withdrawal Request</h3>
+            <div className="form-group">
+              <label className="form-label">Amount (USD)</label>
+              <input className="form-input" type="number" placeholder="Enter amount" value={amount} onChange={e => setAmount(e.target.value)} />
+              {Number(amount) > withdrawable && <div className="form-error">Exceeds withdrawable balance of ${withdrawable.toLocaleString()}</div>}
+            </div>
+            <div className="form-group">
+              <label className="form-label">Withdrawal Method</label>
+              <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
+                <option value="BTC">Bitcoin (BTC)</option>
+                <option value="ETH">Ethereum (ETH)</option>
+                <option value="USDT">Tether (USDT)</option>
+                <option value="Bank">Bank Transfer</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{method === 'Bank' ? 'Bank Account Details' : 'Wallet Address'}</label>
+              <input className="form-input" placeholder={method === 'Bank' ? 'Account number / IBAN' : `Your ${method} wallet address`} value={wallet} onChange={e => setWallet(e.target.value)} />
+            </div>
+            <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
+              ⚠ Withdrawal requests are processed within 24–48 hours after admin approval. Ensure your wallet address is correct.
+            </div>
+            <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !amount || Number(amount) > withdrawable}>
+              {loading ? 'Submitting...' : 'Submit Withdrawal Request'}
+            </button>
+          </div>
+
+          {userWithdrawals.length > 0 && (
+            <div style={{ marginTop: 40 }}>
+              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Withdrawal History</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {userWithdrawals.map(w => (
+                  <div key={w.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>${Number(w.amount).toLocaleString()} via {w.method}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{w.wallet_address?.slice(0, 20)}...</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{w.date}</div>
+                    </div>
+                    <span className={`badge ${w.status === 'Approved' ? 'badge-green' : w.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{w.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
