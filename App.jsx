@@ -330,8 +330,16 @@ const Toast = ({ msg, type }) => (
 const Navbar = ({ page, setPage }) => {
   const { currentUser, logout } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
-  const links = [
+
+  const guestLinks = [
     { id: 'home', label: 'Home' },
+    { id: 'models', label: 'Models' },
+    { id: 'invest', label: 'Invest' },
+    { id: 'about', label: 'About' },
+    { id: 'contact', label: 'Contact' },
+  ];
+
+  const userLinks = [
     { id: 'models', label: 'Models' },
     { id: 'orders', label: 'Order' },
     { id: 'invest', label: 'Invest' },
@@ -339,11 +347,15 @@ const Navbar = ({ page, setPage }) => {
     { id: 'about', label: 'About' },
     { id: 'contact', label: 'Contact' },
   ];
+
+  const links = currentUser ? userLinks : guestLinks;
+  const logoDestination = currentUser ? 'dashboard' : 'home';
+
   return (
     <>
       <nav className="nav">
         <div className="nav-inner">
-          <div className="nav-brand" onClick={() => setPage('home')}>
+          <div className="nav-brand" onClick={() => setPage(logoDestination)}>
             <TeslaLogo size={32} />
             <span className="nav-brand-text">TESLA</span>
           </div>
@@ -2187,7 +2199,13 @@ const AdminPanel = ({ setPage }) => {
 
 // ─── APP ROOT ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPageRaw] = useState(() => LS.get('tesla_page', 'home') || 'home');
+  const [page, setPageRaw] = useState(() => {
+    const session = LS.get('tesla_session', null);
+    const savedPage = LS.get('tesla_page', 'home') || 'home';
+    // If logged in and saved page is home (or nothing), go to dashboard
+    if (session && savedPage === 'home') return 'dashboard';
+    return savedPage;
+  });
   const [toast, setToast] = useState({ msg: '', type: 'success' });
   const [cars, setCarsState] = useState(DEFAULT_CARS);
   const [users, setUsers] = useState([]);
