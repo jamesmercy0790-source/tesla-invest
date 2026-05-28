@@ -14,20 +14,12 @@ export const dbGetUsers = async () => {
 };
 
 export const dbRegister = async (name, email, password) => {
-  // Check duplicate email
-  const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .ilike('email', email)
-    .maybeSingle();
-
+  const { data: existing } = await supabase.from('users').select('id').ilike('email', email).maybeSingle();
   if (existing) return { user: null, error: 'This email is already registered.' };
 
   const user = {
     id: crypto.randomUUID(),
-    name,
-    email,
-    password,
+    name, email, password,
     joined: new Date().toISOString().split('T')[0],
   };
 
@@ -37,13 +29,7 @@ export const dbRegister = async (name, email, password) => {
 };
 
 export const dbLogin = async (email, password) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .ilike('email', email)
-    .eq('password', password)
-    .maybeSingle();
-
+  const { data, error } = await supabase.from('users').select('*').ilike('email', email).eq('password', password).maybeSingle();
   if (error || !data) return { user: null, error: 'Invalid email or password.' };
   return { user: data, error: null };
 };
@@ -52,7 +38,7 @@ export const dbLogin = async (email, password) => {
 
 export const dbGetCars = async () => {
   const { data, error } = await supabase.from('cars').select('*').order('id', { ascending: true });
-  if (error) { console.error('getCars:', error); return null; } // null = fallback to defaults
+  if (error) { console.error('getCars:', error); return null; }
   return data;
 };
 
@@ -90,7 +76,17 @@ export const dbGetInvestments = async (userId = null) => {
 };
 
 export const dbInsertInvestment = async (inv) => {
-  const { data, error } = await supabase.from('investments').insert([inv]).select().single();
+  // Map camelCase fields to snake_case columns
+  const record = {
+    user_id:  inv.user_id,
+    car_name: inv.carName || inv.car_name || null,
+    amount:   inv.amount,
+    plan:     inv.plan || null,
+    returns:  inv.returns || 0,
+    status:   inv.status || 'Active',
+    date:     inv.date || new Date().toISOString().split('T')[0],
+  };
+  const { data, error } = await supabase.from('investments').insert([record]).select().single();
   if (error) { console.error('insertInvestment:', error); return null; }
   return data;
 };
@@ -105,8 +101,23 @@ export const dbGetOrders = async (userId = null) => {
   return data;
 };
 
-export const dbInsertOrder = async (order) => {
-  const { data, error } = await supabase.from('orders').insert([order]).select().single();
+export const dbInsertOrder = async (ord) => {
+  const record = {
+    user_id:   ord.user_id,
+    car_name:  ord.carName || ord.car_name || null,
+    car_id:    ord.carId   || ord.car_id   || null,
+    car_price: ord.carPrice || ord.car_price || ord.price || null,
+    price:     ord.price   || null,
+    color:     ord.color   || null,
+    full_name: ord.fullName || ord.full_name || null,
+    email:     ord.email   || null,
+    phone:     ord.phone   || null,
+    address:   ord.address || null,
+    notes:     ord.notes   || null,
+    status:    ord.status  || 'Pending',
+    date:      ord.date    || new Date().toISOString().split('T')[0],
+  };
+  const { data, error } = await supabase.from('orders').insert([record]).select().single();
   if (error) { console.error('insertOrder:', error); return null; }
   return data;
 };
@@ -124,13 +135,49 @@ export const dbGetPayments = async (userId = null) => {
   if (userId) query = query.eq('user_id', userId);
   const { data, error } = await query;
   if (error) { console.error('getPayments:', error); return []; }
-  return data;
+  // Map snake_case back to camelCase for the UI
+  return data.map(p => ({
+    ...p,
+    userName:       p.user_name,
+    userEmail:      p.user_email,
+    walletAddress:  p.wallet_address,
+    returnRate:     p.return_rate,
+    receiptPreview: p.receipt_preview,
+    receiptName:    p.receipt_name,
+  }));
 };
 
-export const dbInsertPayment = async (payment) => {
-  const { data, error } = await supabase.from('payments').insert([payment]).select().single();
+export const dbInsertPayment = async (pay) => {
+  const record = {
+    user_id:        pay.user_id,
+    order_id:       pay.order_id       || null,
+    amount:         pay.amount,
+    method:         pay.method         || pay.coin || null,
+    status:         pay.status         || 'Pending',
+    date:           pay.date           || new Date().toISOString().split('T')[0],
+    user_name:      pay.userName       || pay.user_name  || null,
+    user_email:     pay.userEmail      || pay.user_email || null,
+    coin:           pay.coin           || null,
+    wallet_address: pay.walletAddress  || pay.wallet_address || null,
+    network:        pay.network        || null,
+    plan:           pay.plan           || null,
+    asset:          pay.asset          || null,
+    return_rate:    pay.returnRate     || pay.return_rate || null,
+    receipt_preview: pay.receiptPreview || pay.receipt_preview || null,
+    receipt_name:   pay.receiptName    || pay.receipt_name || null,
+  };
+  const { data, error } = await supabase.from('payments').insert([record]).select().single();
   if (error) { console.error('insertPayment:', error); return null; }
-  return data;
+  // Return with camelCase fields for UI
+  return {
+    ...data,
+    userName:       data.user_name,
+    userEmail:      data.user_email,
+    walletAddress:  data.wallet_address,
+    returnRate:     data.return_rate,
+    receiptPreview: data.receipt_preview,
+    receiptName:    data.receipt_name,
+  };
 };
 
 export const dbUpdatePaymentStatus = async (id, status) => {

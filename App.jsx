@@ -1611,6 +1611,8 @@ const RegisterPage = ({ setPage }) => {
 const DashboardPage = ({ setPage }) => {
   const { currentUser, investments, logout } = useApp();
   const [tab, setTab] = useState('overview');
+  const { appReady } = useApp();
+  if (!appReady) return null;
   if (!currentUser) { setPage('login'); return null; }
   const userInvestments = investments.filter(i => i.user_id === currentUser.id);
   const totalInvested = userInvestments.reduce((s, i) => s + Number(i.amount), 0);
@@ -2077,7 +2079,7 @@ const AdminPanel = ({ setPage }) => {
 
 // ─── APP ROOT ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPageRaw] = useState('home');
+  const [page, setPageRaw] = useState(() => LS.get('tesla_page', 'home') || 'home');
   const [toast, setToast] = useState({ msg: '', type: 'success' });
   const [cars, setCarsState] = useState(DEFAULT_CARS);
   const [users, setUsers] = useState([]);
@@ -2158,6 +2160,8 @@ export default function App() {
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem('tesla_session');
+    localStorage.removeItem('tesla_page');
+    setPageRaw('home');
   };
 
   const addInvestment = async (inv) => {
@@ -2191,7 +2195,7 @@ export default function App() {
   const noNavPages = ['login', 'register', 'admin_login'];
   const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard'];
 
-  const setPage = (p) => { setPageRaw(p); window.scrollTo(0, 0); };
+  const setPage = (p) => { setPageRaw(p); LS.set('tesla_page', p); window.scrollTo(0, 0); };
 
   const renderPage = () => {
     if (!appReady) return (
@@ -2218,7 +2222,7 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus, addOrder, updateOrderStatus, showToast }}>
+    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus, addOrder, updateOrderStatus, showToast, appReady }}>
       <GlobalStyle />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
       {renderPage()}
