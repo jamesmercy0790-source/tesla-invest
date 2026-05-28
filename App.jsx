@@ -1104,7 +1104,7 @@ const InvestPlans = ({ setPage, preview }) => {
               const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
               if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
               if (approved.length === 0) { showToast('You must make a payment and get it approved before investing.', 'error'); return; }
-              if (availableBalance < plan.minInvest) { showToast(\`Insufficient balance. You need $\${plan.minInvest.toLocaleString()} but have $\${availableBalance.toLocaleString()} available.\`, 'error'); return; }
+              if (availableBalance < plan.minInvest) { showToast(`Insufficient balance. You need $${plan.minInvest.toLocaleString()} but have $${availableBalance.toLocaleString()} available.`, 'error'); return; }
               setAmount(plan.minInvest); setActiveModal(plan.id);
             }}>Start with {plan.name}</button>}
             {preview && <button className="btn btn-secondary btn-full" onClick={() => setPage('invest')}>Learn More</button>}
@@ -1121,10 +1121,10 @@ const InvestPlans = ({ setPage, preview }) => {
           planLabel={activePlan.name}
           onClose={() => setActiveModal(null)}
           onConfirm={() => {
-            if (amount > availableBalance) { showToast(\`Insufficient balance. You have $\${availableBalance.toLocaleString()} available.\`, 'error'); return; }
+            if (amount > availableBalance) { showToast(`Insufficient balance. You have $${availableBalance.toLocaleString()} available.`, 'error'); return; }
             addInvestment({ carId: null, carName: 'Portfolio Fund', amount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (amount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
             setActiveModal(null);
-            showToast(\`Successfully invested $\${amount.toLocaleString()} in \${activePlan.name} plan!\`, 'success');
+            showToast(`Successfully invested $${amount.toLocaleString()} in ${activePlan.name} plan!`, 'success');
           }}
         />
       )}
