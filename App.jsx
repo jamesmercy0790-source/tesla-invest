@@ -616,7 +616,7 @@ const WALLETS = {
 const usePaymentStatus = (requiredAmount = 0) => {
   const { payments, currentUser } = useApp();
   if (!currentUser) return 'none';
-  const userPayments = payments.filter(p => p.userId === currentUser.id);
+  const userPayments = payments.filter(p => p.user_id === currentUser.id);
   const approved = userPayments.filter(p => p.status === 'Approved');
   const pending = userPayments.filter(p => p.status === 'Pending');
   const totalApproved = approved.reduce((s, p) => s + Number(p.amount), 0);
@@ -658,7 +658,7 @@ const OrdersPage = ({ setPage }) => {
   const [submitted, setSubmitted] = useState(false);
   const payStatus = usePaymentStatus(0);
 
-  const userOrders = orders ? orders.filter(o => o.userId === currentUser?.id) : [];
+  const userOrders = orders ? orders.filter(o => o.user_id === currentUser?.id) : [];
   const colors = ['Pearl White', 'Midnight Silver', 'Deep Blue', 'Solid Black', 'Red Multi-Coat', 'Ultra Red'];
 
   const handleSubmit = () => {
@@ -851,7 +851,7 @@ const PaymentModal = ({ title, amount, setAmount, minAmount, returnRate, onClose
   const handleSubmit = () => {
     if (!receipt) { setReceiptError('Please upload your payment receipt.'); return; }
     addPayment({
-      userId: currentUser.id,
+      user_id: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,
       coin,
@@ -1025,8 +1025,8 @@ const CarDetailPage = ({ carId, setPage }) => {
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
                 if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
-                const approved = payments.filter(p => p.userId === currentUser.id && p.status === 'Approved');
-                const pending = payments.filter(p => p.userId === currentUser.id && p.status === 'Pending');
+                const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+                const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
                 if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
                 if (approved.length === 0) { showToast('You must make a payment first before investing.', 'error'); setPage('invest'); return; }
                 setShowInvest(true);
@@ -1093,8 +1093,8 @@ const InvestPlans = ({ setPage, preview }) => {
             </ul>
             {!preview && <button className="btn btn-primary btn-full" onClick={() => {
               if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
-              const approved = payments.filter(p => p.userId === currentUser.id && p.status === 'Approved');
-              const pending = payments.filter(p => p.userId === currentUser.id && p.status === 'Pending');
+              const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+              const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
               if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
               if (approved.length === 0) { showToast('You must make a payment and get it approved before investing.', 'error'); return; }
               setAmount(plan.minInvest); setActiveModal(plan.id);
@@ -1126,8 +1126,8 @@ const InvestPlans = ({ setPage, preview }) => {
 // ─── INVEST PAGE ──────────────────────────────────────────────────────────────
 const InvestPage = ({ setPage }) => {
   const { currentUser, payments } = useApp();
-  const approvedPayments = currentUser ? payments.filter(p => p.userId === currentUser.id && p.status === 'Approved') : [];
-  const pendingPayments = currentUser ? payments.filter(p => p.userId === currentUser.id && p.status === 'Pending') : [];
+  const approvedPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved') : [];
+  const pendingPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending') : [];
   return (
   <div className="page">
     <div className="page-header">
@@ -1177,8 +1177,8 @@ const ModelsInvestSection = ({ setPage }) => {
       <div className="cars-grid">
         {cars.map(car => <CarCard key={car.id} car={car} setPage={setPage} onInvest={c => {
           if (!currentUser) { showToast('Please login', 'error'); setPage('login'); return; }
-          const approved = payments.filter(p => p.userId === currentUser.id && p.status === 'Approved');
-          const pending = payments.filter(p => p.userId === currentUser.id && p.status === 'Pending');
+          const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+          const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
           if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
           if (approved.length === 0) { showToast('Make a payment and get it approved before investing.', 'error'); return; }
           setInvestCar(c); setAmount(5000);
@@ -1292,7 +1292,7 @@ const PaymentPage = ({ setPage }) => {
   const [done, setDone] = useState(false);
 
   const wallet = WALLETS[coin];
-  const userPayments = currentUser ? payments.filter(p => p.userId === currentUser.id) : [];
+  const userPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id) : [];
   const hasApproved = userPayments.some(p => p.status === 'Approved');
   const hasPending = userPayments.some(p => p.status === 'Pending');
 
@@ -1332,7 +1332,7 @@ const PaymentPage = ({ setPage }) => {
   const handleSubmit = () => {
     if (!receipt) { setReceiptError('Please upload your payment receipt.'); return; }
     addPayment({
-      userId: currentUser.id,
+      user_id: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,
       coin, amount,
@@ -1612,7 +1612,7 @@ const DashboardPage = ({ setPage }) => {
   const { currentUser, investments, logout } = useApp();
   const [tab, setTab] = useState('overview');
   if (!currentUser) { setPage('login'); return null; }
-  const userInvestments = investments.filter(i => i.userId === currentUser.id);
+  const userInvestments = investments.filter(i => i.user_id === currentUser.id);
   const totalInvested = userInvestments.reduce((s, i) => s + Number(i.amount), 0);
   const totalReturns = userInvestments.reduce((s, i) => s + Number(i.returns), 0);
   const tabs = ['overview', 'portfolio', 'transactions'];
@@ -1809,7 +1809,7 @@ const AdminPanel = ({ setPage }) => {
                   {investments.length === 0 ? <div style={{ color: 'var(--muted)', fontSize: 14 }}>No investments yet.</div> : (
                     <table className="users-table"><thead><tr><th>User</th><th>Asset</th><th>Amount</th><th>Date</th><th>Plan</th></tr></thead>
                       <tbody>{investments.slice(-10).reverse().map((inv, i) => {
-                        const u = users.find(u => u.id === inv.userId);
+                        const u = users.find(u => u.id === inv.user_id);
                         return <tr key={i}><td>{u?.name || 'Unknown'}</td><td>{inv.carName}</td><td>${Number(inv.amount).toLocaleString()}</td><td>{inv.date}</td><td><span className="badge badge-blue">{inv.plan}</span></td></tr>;
                       })}</tbody>
                     </table>
@@ -1849,7 +1849,7 @@ const AdminPanel = ({ setPage }) => {
                   <table className="users-table">
                     <thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Investments</th><th>Total Invested</th></tr></thead>
                     <tbody>{users.map(u => {
-                      const uInv = investments.filter(i => i.userId === u.id);
+                      const uInv = investments.filter(i => i.user_id === u.id);
                       const uTotal = uInv.reduce((s, i) => s + Number(i.amount), 0);
                       return <tr key={u.id}><td style={{ fontWeight: 600 }}>{u.name}</td><td style={{ color: 'var(--muted)' }}>{u.email}</td><td style={{ color: 'var(--muted)' }}>{u.joined}</td><td>{uInv.length}</td><td className="positive">${uTotal.toLocaleString()}</td></tr>;
                     })}</tbody>
@@ -1865,7 +1865,7 @@ const AdminPanel = ({ setPage }) => {
                   <table className="users-table">
                     <thead><tr><th>User</th><th>Asset</th><th>Amount</th><th>Plan</th><th>Returns</th><th>Date</th><th>Status</th></tr></thead>
                     <tbody>{investments.map((inv, i) => {
-                      const u = users.find(u => u.id === inv.userId);
+                      const u = users.find(u => u.id === inv.user_id);
                       return <tr key={i}><td>{u?.name || 'Unknown'}</td><td>{inv.carName}</td><td>${Number(inv.amount).toLocaleString()}</td><td>{inv.plan}</td><td className="positive">+${Number(inv.returns).toLocaleString()}</td><td style={{ color: 'var(--muted)', fontSize: 13 }}>{inv.date}</td><td><span className="badge badge-gold">{inv.status}</span></td></tr>;
                     })}</tbody>
                   </table>
@@ -1888,7 +1888,7 @@ const AdminPanel = ({ setPage }) => {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {orders.slice().reverse().map(ord => {
-                      const u = users.find(u => u.id === ord.userId);
+                      const u = users.find(u => u.id === ord.user_id);
                       return (
                         <div key={ord.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
@@ -2084,17 +2084,13 @@ export default function App() {
   const [investments, setInvestments] = useState([]);
   const [payments, setPayments] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [currentUser, setCurrentUser] = useState(() => LS.get('tesla_session', null));
+  const [currentUser, setCurrentUser] = useState(() => LS.get('tesla_session', null) || null);
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
   const [appReady, setAppReady] = useState(false);
 
   // ── LOAD ALL DATA FROM SUPABASE ON MOUNT ────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      // Restore session from localStorage token
-      const session = LS.get('tesla_session', null);
-      if (session) setCurrentUser(session);
-
       // Load cars (fall back to defaults if table is empty or errors)
       const carsData = await dbGetCars();
       if (carsData && carsData.length > 0) {
@@ -2122,8 +2118,12 @@ export default function App() {
     init();
   }, []);
 
-  // Persist session token locally (not sensitive data, just the logged-in user object)
-  useEffect(() => { LS.set('tesla_session', currentUser); }, [currentUser]);
+  // Persist session to localStorage whenever currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      LS.set('tesla_session', currentUser);
+    }
+  }, [currentUser]);
 
   const setCars = async (fnOrArr) => {
     // Accept both a function updater and a direct array (for compatibility)
@@ -2157,7 +2157,7 @@ export default function App() {
   // ── LOGOUT ──────────────────────────────────────────────────────────────────
   const logout = () => {
     setCurrentUser(null);
-    LS.set('tesla_session', null);
+    localStorage.removeItem('tesla_session');
   };
 
   const addInvestment = async (inv) => {
