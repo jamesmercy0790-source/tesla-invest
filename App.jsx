@@ -1730,7 +1730,7 @@ const RegisterPage = ({ setPage }) => {
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const DashboardPage = ({ setPage }) => {
-  const { currentUser, investments, payments, orders, logout } = useApp();
+  const { currentUser, investments, payments, orders, withdrawals, logout } = useApp();
   const [tab, setTab] = useState('overview');
   const { appReady } = useApp();
   if (!appReady) return null;
@@ -2301,7 +2301,25 @@ const AdminPanel = ({ setPage }) => {
               <div className="form-group"><label className="form-label">Model Name *</label><input className="form-input" placeholder="e.g. Model S Plaid" value={newCar.name} onChange={e => setNewCar({ ...newCar, name: e.target.value })} /></div>
               <div className="form-group"><label className="form-label">Price (USD) *</label><input className="form-input" type="number" placeholder="89990" value={newCar.price} onChange={e => setNewCar({ ...newCar, price: e.target.value })} /></div>
             </div>
-            <div className="form-group"><label className="form-label">Image URL</label><input className="form-input" placeholder="https://..." value={newCar.image} onChange={e => setNewCar({ ...newCar, image: e.target.value })} /></div>
+            <div className="form-group">
+              <label className="form-label">Car Image</label>
+              <input type="file" accept="image/*" style={{ display: 'none' }} id="add-car-img"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => setNewCar({ ...newCar, image: ev.target.result });
+                  reader.readAsDataURL(file);
+                }}
+              />
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => document.getElementById('add-car-img').click()}>
+                  📷 Choose Image
+                </button>
+                {newCar.image && <img src={newCar.image} alt="preview" style={{ height: 60, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--border)' }} />}
+                {!newCar.image && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No image selected</span>}
+              </div>
+            </div>
             <div className="form-group"><label className="form-label">Badge</label>
               <select className="form-select" value={newCar.badge} onChange={e => setNewCar({ ...newCar, badge: e.target.value })}>
                 <option value="">None</option>
@@ -2340,7 +2358,25 @@ const AdminPanel = ({ setPage }) => {
               <div className="form-group"><label className="form-label">Model Name</label><input className="form-input" value={editCar.name} onChange={e => setEditCar({ ...editCar, name: e.target.value })} /></div>
               <div className="form-group"><label className="form-label">Price (USD)</label><input className="form-input" type="number" value={editCar.price} onChange={e => setEditCar({ ...editCar, price: e.target.value })} /></div>
             </div>
-            <div className="form-group"><label className="form-label">Image URL</label><input className="form-input" value={editCar.image || ''} onChange={e => setEditCar({ ...editCar, image: e.target.value })} /></div>
+            <div className="form-group">
+              <label className="form-label">Car Image</label>
+              <input type="file" accept="image/*" style={{ display: 'none' }} id="edit-car-img"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => setEditCar({ ...editCar, image: ev.target.result });
+                  reader.readAsDataURL(file);
+                }}
+              />
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => document.getElementById('edit-car-img').click()}>
+                  📷 Choose Image
+                </button>
+                {editCar.image && <img src={editCar.image} alt="preview" style={{ height: 60, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--border)' }} />}
+                {!editCar.image && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No image selected</span>}
+              </div>
+            </div>
             <div className="form-group"><label className="form-label">Badge</label>
               <select className="form-select" value={editCar.badge || ''} onChange={e => setEditCar({ ...editCar, badge: e.target.value })}>
                 <option value="">None</option>
