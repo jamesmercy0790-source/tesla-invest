@@ -2534,6 +2534,7 @@ export default function App() {
   // ── LOAD ALL DATA FROM SUPABASE ON MOUNT ────────────────────────────────────
   useEffect(() => {
     const init = async () => {
+      try {
       // Load cars (fall back to defaults if table is empty or errors)
       const carsData = await dbGetCars();
       if (carsData && carsData.length > 0) {
@@ -2553,7 +2554,7 @@ export default function App() {
         dbGetPayments(),
         dbGetWithdrawals(),
         dbGetBroadcasts(),
-        dbGetKyc(),
+        dbGetKyc().catch(() => []),
       ]);
       setUsers(usersData);
       setInvestments(investmentsData);
@@ -2561,17 +2562,25 @@ export default function App() {
       setPayments(paymentsData);
       setWithdrawals(withdrawalsData);
       setBroadcasts(broadcastsData);
-      setAllKyc(allKycData || []);
+      setAllKyc(Array.isArray(allKycData) ? allKycData : []);
       if (session?.id) {
-        const [notifData, kycData] = await Promise.all([
-          dbGetNotifications(session.id),
-          dbGetKyc(session.id),
-        ]);
-        setNotifications(notifData || []);
-        setKyc(kycData);
+        try {
+          const [notifData, kycData] = await Promise.all([
+            dbGetNotifications(session.id),
+            dbGetKyc(session.id),
+          ]);
+          setNotifications(notifData || []);
+          setKyc(kycData);
+        } catch (e) {
+          console.warn('Notifications/KYC tables not ready yet:', e);
+        }
       }
 
       setAppReady(true);
+      } catch (e) {
+        console.error('Init error:', e);
+        setAppReady(true); // still show app even if something fails
+      }
     };
     init();
   }, []);
