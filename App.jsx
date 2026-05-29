@@ -864,6 +864,180 @@ const Footer = ({ setPage }) => (
 );
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
+const CarCard = ({ car, setPage, onInvest }) => {
+  const { currentUser, showToast } = useApp();
+  const badge = car.badge || '';
+  const badgeCls = badge === 'New' ? 'new' : badge === 'Coming Soon' ? 'coming' : '';
+  return (
+    <div className="car-card">
+      <div className="car-img-wrap">
+        <img src={car.image} alt={car.name} onError={e => { e.target.src = 'https://via.placeholder.com/600x300/1a1a1a/555?text=Tesla+' + car.name; }} />
+        {badge && <span className={`car-badge ${badgeCls}`}>{badge}</span>}
+      </div>
+      <div className="car-info">
+        <div className="car-name">{car.name}</div>
+        <div className="car-price">${Number(car.price).toLocaleString()}</div>
+        <div className="car-specs-mini">
+          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.range || 'N/A'}</div><div className="car-spec-mini-label">Range</div></div>
+          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.acceleration || 'N/A'}</div><div className="car-spec-mini-label">0-60</div></div>
+          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.topSpeed || 'N/A'}</div><div className="car-spec-mini-label">Top Speed</div></div>
+        </div>
+        <div className="car-actions">
+          <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => setPage('car_' + car.id)}>Details</button>
+          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => {
+            if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
+            if (onInvest) onInvest(car);
+            else setPage('invest');
+          }}>Invest</button>
+        </div>
+        <button className="btn btn-secondary btn-sm btn-full" style={{ marginTop: 8 }} onClick={() => {
+          if (!currentUser) { showToast('Please login to order', 'error'); setPage('login'); return; }
+          if (onOrder) onOrder(car);
+          else setPage('orders');
+        }}>🛒 Order This Car</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── MODELS PAGE ──────────────────────────────────────────────────────────────
+
+// ─── INVEST FROM BALANCE MODAL ───────────────────────────────────────────────
+const InvestFromBalanceModal = ({ title, amount, setAmount, minAmount, returnRate, planLabel, onClose, onConfirm }) => {
+  const availableBalance = useAvailableBalance();
+  const maxAmount = Math.floor(availableBalance / 1000) * 1000 || availableBalance;
+  const isInsufficient = amount > availableBalance;
+  const isValid = amount >= (minAmount || 1000) && !isInsufficient;
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <div className="modal-title">{title}</div>
+
+        {/* Balance display */}
+        <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 2 }}>Available Balance</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div>
+          </div>
+          <div style={{ fontSize: 28 }}>💰</div>
+        </div>
+
+        {/* Amount slider */}
+        <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Select investment amount</div>
+        <div style={{ fontFamily: 'Rajdhani', fontSize: 40, fontWeight: 700, textAlign: 'center', color: isInsufficient ? 'var(--red)' : 'var(--white)', marginBottom: 12 }}>${amount.toLocaleString()}</div>
+        <input
+          type="range"
+          className="range-input"
+          min={minAmount || 1000}
+          max={Math.max(availableBalance, minAmount || 1000)}
+          step={100}
+          value={Math.min(amount, availableBalance)}
+          onChange={e => setAmount(Number(e.target.value))}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 20 }}>
+          <span>Min: ${(minAmount || 1000).toLocaleString()}</span>
+          <span>Max: ${availableBalance.toLocaleString()}</span>
+        </div>
+
+        {/* Insufficient balance warning */}
+        {isInsufficient && (
+          <div style={{ background: 'rgba(227,25,55,0.1)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: '#ff9999' }}>
+            ⚠ Insufficient balance. You have ${availableBalance.toLocaleString()} available but selected ${amount.toLocaleString()}.
+          </div>
+        )}
+
+        {/* Return estimate */}
+        {!isInsufficient && (
+          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.2)', borderRadius: 10, padding: 14, marginBottom: 24, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+            <span style={{ color: 'var(--muted)' }}>Estimated Annual Return ({returnRate})</span>
+            <span style={{ color: 'var(--green)', fontWeight: 700 }}>+${(amount * parseFloat(returnRate) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          </div>
+        )}
+
+        {/* Amount remaining after invest */}
+        {!isInsufficient && (
+          <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', marginBottom: 20 }}>
+            Remaining balance after investment: <strong style={{ color: 'var(--white)' }}>${(availableBalance - amount).toLocaleString()}</strong>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            style={{ flex: 1, opacity: isValid ? 1 : 0.5 }}
+            disabled={!isValid}
+            onClick={() => isValid && onConfirm(amount)}
+          >
+            {isInsufficient ? 'Insufficient Balance' : `Invest $${amount.toLocaleString()}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const InvestPlans = ({ setPage, preview }) => {
+  const { currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
+  const [activeModal, setActiveModal] = useState(null);
+  const [amount, setAmount] = useState(5000);
+  const plans = [
+    { id: 'starter', name: 'Starter', tag: 'Entry Level', returnRate: '12%', minInvest: 1000, features: ['Monthly statements', 'Basic analytics', 'Email support', 'Standard withdrawal (7 days)'] },
+    { id: 'growth', name: 'Growth', tag: 'Most Popular', returnRate: '24%', minInvest: 10000, features: ['Weekly statements', 'Advanced analytics', 'Priority support', 'Fast withdrawal (3 days)', 'Portfolio rebalancing'], featured: true },
+    { id: 'elite', name: 'Elite', tag: 'Maximum Returns', returnRate: '45%', minInvest: 100000, features: ['Daily statements', 'AI analytics suite', 'Dedicated manager', 'Instant withdrawal', 'Auto-rebalancing', 'Exclusive model access'] },
+  ];
+  const activePlan = plans.find(p => p.id === activeModal);
+  return (
+    <>
+      <div className="invest-plans">
+        {plans.map(plan => (
+          <div key={plan.id} className={`plan-card${plan.featured ? ' featured' : ''}`}>
+            <div className="plan-tag">{plan.tag}</div>
+            <div className="plan-name">{plan.name}</div>
+            <div className="plan-return">{plan.returnRate}</div>
+            <div className="plan-return-label">Annual Return</div>
+            <div className="plan-min">Min. Investment: <span>${plan.minInvest.toLocaleString()}</span></div>
+            <ul className="plan-features">
+              {plan.features.map(f => <li key={f} className="plan-feature"><span className="plan-check">✓</span>{f}</li>)}
+            </ul>
+            {!preview && <button className="btn btn-primary btn-full" onClick={() => {
+              if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
+              const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+              const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
+              if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
+              if (approved.length === 0) { showToast('You must make a payment and get it approved before investing.', 'error'); return; }
+              if (availableBalance < plan.minInvest) { showToast(`Insufficient balance. You need $${plan.minInvest.toLocaleString()} but have $${availableBalance.toLocaleString()} available.`, 'error'); return; }
+              setAmount(plan.minInvest); setActiveModal(plan.id);
+            }}>Start with {plan.name}</button>}
+            {preview && <button className="btn btn-secondary btn-full" onClick={() => setPage('invest')}>Learn More</button>}
+          </div>
+        ))}
+      </div>
+      {activeModal && activePlan && (
+        <InvestFromBalanceModal
+          title={`${activePlan.name} Plan Investment`}
+          amount={amount}
+          setAmount={setAmount}
+          minAmount={activePlan.minInvest}
+          returnRate={activePlan.returnRate}
+          planLabel={activePlan.name}
+          onClose={() => setActiveModal(null)}
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: null, carName: 'Portfolio Fund', amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (finalAmount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
+            setActiveModal(null);
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${activePlan.name} plan!`, 'success');
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+// ─── INVEST PAGE ──────────────────────────────────────────────────────────────
+
 const HomePage = ({ setPage }) => {
   const { cars } = useApp();
   return (
@@ -962,43 +1136,6 @@ const HomePage = ({ setPage }) => {
 };
 
 // ─── CAR CARD ────────────────────────────────────────────────────────────────
-const CarCard = ({ car, setPage, onInvest }) => {
-  const { currentUser, showToast } = useApp();
-  const badge = car.badge || '';
-  const badgeCls = badge === 'New' ? 'new' : badge === 'Coming Soon' ? 'coming' : '';
-  return (
-    <div className="car-card">
-      <div className="car-img-wrap">
-        <img src={car.image} alt={car.name} onError={e => { e.target.src = 'https://via.placeholder.com/600x300/1a1a1a/555?text=Tesla+' + car.name; }} />
-        {badge && <span className={`car-badge ${badgeCls}`}>{badge}</span>}
-      </div>
-      <div className="car-info">
-        <div className="car-name">{car.name}</div>
-        <div className="car-price">${Number(car.price).toLocaleString()}</div>
-        <div className="car-specs-mini">
-          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.range || 'N/A'}</div><div className="car-spec-mini-label">Range</div></div>
-          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.acceleration || 'N/A'}</div><div className="car-spec-mini-label">0-60</div></div>
-          <div className="car-spec-mini"><div className="car-spec-mini-val">{car.specs?.topSpeed || 'N/A'}</div><div className="car-spec-mini-label">Top Speed</div></div>
-        </div>
-        <div className="car-actions">
-          <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => setPage('car_' + car.id)}>Details</button>
-          <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => {
-            if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
-            if (onInvest) onInvest(car);
-            else setPage('invest');
-          }}>Invest</button>
-        </div>
-        <button className="btn btn-secondary btn-sm btn-full" style={{ marginTop: 8 }} onClick={() => {
-          if (!currentUser) { showToast('Please login to order', 'error'); setPage('login'); return; }
-          if (onOrder) onOrder(car);
-          else setPage('orders');
-        }}>🛒 Order This Car</button>
-      </div>
-    </div>
-  );
-};
-
-// ─── MODELS PAGE ──────────────────────────────────────────────────────────────
 const ModelsPage = ({ setPage }) => {
   const { cars } = useApp();
   const [filter, setFilter] = useState('All');
@@ -1261,83 +1398,6 @@ const OrdersPage = ({ setPage }) => {
 };
 
 
-// ─── INVEST FROM BALANCE MODAL ───────────────────────────────────────────────
-const InvestFromBalanceModal = ({ title, amount, setAmount, minAmount, returnRate, planLabel, onClose, onConfirm }) => {
-  const availableBalance = useAvailableBalance();
-  const maxAmount = Math.floor(availableBalance / 1000) * 1000 || availableBalance;
-  const isInsufficient = amount > availableBalance;
-  const isValid = amount >= (minAmount || 1000) && !isInsufficient;
-
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 480 }}>
-        <button className="modal-close" onClick={onClose}>✕</button>
-        <div className="modal-title">{title}</div>
-
-        {/* Balance display */}
-        <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 2 }}>Available Balance</div>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div>
-          </div>
-          <div style={{ fontSize: 28 }}>💰</div>
-        </div>
-
-        {/* Amount slider */}
-        <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>Select investment amount</div>
-        <div style={{ fontFamily: 'Rajdhani', fontSize: 40, fontWeight: 700, textAlign: 'center', color: isInsufficient ? 'var(--red)' : 'var(--white)', marginBottom: 12 }}>${amount.toLocaleString()}</div>
-        <input
-          type="range"
-          className="range-input"
-          min={minAmount || 1000}
-          max={Math.max(availableBalance, minAmount || 1000)}
-          step={100}
-          value={Math.min(amount, availableBalance)}
-          onChange={e => setAmount(Number(e.target.value))}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginBottom: 20 }}>
-          <span>Min: ${(minAmount || 1000).toLocaleString()}</span>
-          <span>Max: ${availableBalance.toLocaleString()}</span>
-        </div>
-
-        {/* Insufficient balance warning */}
-        {isInsufficient && (
-          <div style={{ background: 'rgba(227,25,55,0.1)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: '#ff9999' }}>
-            ⚠ Insufficient balance. You have ${availableBalance.toLocaleString()} available but selected ${amount.toLocaleString()}.
-          </div>
-        )}
-
-        {/* Return estimate */}
-        {!isInsufficient && (
-          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.2)', borderRadius: 10, padding: 14, marginBottom: 24, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-            <span style={{ color: 'var(--muted)' }}>Estimated Annual Return ({returnRate})</span>
-            <span style={{ color: 'var(--green)', fontWeight: 700 }}>+${(amount * parseFloat(returnRate) / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-          </div>
-        )}
-
-        {/* Amount remaining after invest */}
-        {!isInsufficient && (
-          <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', marginBottom: 20 }}>
-            Remaining balance after investment: <strong style={{ color: 'var(--white)' }}>${(availableBalance - amount).toLocaleString()}</strong>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            style={{ flex: 1, opacity: isValid ? 1 : 0.5 }}
-            disabled={!isValid}
-            onClick={() => isValid && onConfirm(amount)}
-          >
-            {isInsufficient ? 'Insufficient Balance' : `Invest $${amount.toLocaleString()}`}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── PAYMENT MODAL (shared) ──────────────────────────────────────────────────
 const PaymentModal = ({ title, amount, setAmount, minAmount, returnRate, onClose, onConfirm, planLabel }) => {
   const { addPayment, currentUser } = useApp();
@@ -1587,56 +1647,40 @@ const CarDetailPage = ({ carId, setPage }) => {
 };
 
 // ─── INVEST PLANS ────────────────────────────────────────────────────────────
-const InvestPlans = ({ setPage, preview }) => {
-  const { currentUser, showToast, addInvestment, payments } = useApp();
+
+
+
+
+const ModelsInvestSection = ({ setPage }) => {
+  const { cars, currentUser, showToast, addInvestment, payments } = useApp();
   const availableBalance = useAvailableBalance();
-  const [activeModal, setActiveModal] = useState(null);
+  const [investCar, setInvestCar] = useState(null);
   const [amount, setAmount] = useState(5000);
-  const plans = [
-    { id: 'starter', name: 'Starter', tag: 'Entry Level', returnRate: '12%', minInvest: 1000, features: ['Monthly statements', 'Basic analytics', 'Email support', 'Standard withdrawal (7 days)'] },
-    { id: 'growth', name: 'Growth', tag: 'Most Popular', returnRate: '24%', minInvest: 10000, features: ['Weekly statements', 'Advanced analytics', 'Priority support', 'Fast withdrawal (3 days)', 'Portfolio rebalancing'], featured: true },
-    { id: 'elite', name: 'Elite', tag: 'Maximum Returns', returnRate: '45%', minInvest: 100000, features: ['Daily statements', 'AI analytics suite', 'Dedicated manager', 'Instant withdrawal', 'Auto-rebalancing', 'Exclusive model access'] },
-  ];
-  const activePlan = plans.find(p => p.id === activeModal);
   return (
     <>
-      <div className="invest-plans">
-        {plans.map(plan => (
-          <div key={plan.id} className={`plan-card${plan.featured ? ' featured' : ''}`}>
-            <div className="plan-tag">{plan.tag}</div>
-            <div className="plan-name">{plan.name}</div>
-            <div className="plan-return">{plan.returnRate}</div>
-            <div className="plan-return-label">Annual Return</div>
-            <div className="plan-min">Min. Investment: <span>${plan.minInvest.toLocaleString()}</span></div>
-            <ul className="plan-features">
-              {plan.features.map(f => <li key={f} className="plan-feature"><span className="plan-check">✓</span>{f}</li>)}
-            </ul>
-            {!preview && <button className="btn btn-primary btn-full" onClick={() => {
-              if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
-              const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
-              const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
-              if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
-              if (approved.length === 0) { showToast('You must make a payment and get it approved before investing.', 'error'); return; }
-              if (availableBalance < plan.minInvest) { showToast(`Insufficient balance. You need $${plan.minInvest.toLocaleString()} but have $${availableBalance.toLocaleString()} available.`, 'error'); return; }
-              setAmount(plan.minInvest); setActiveModal(plan.id);
-            }}>Start with {plan.name}</button>}
-            {preview && <button className="btn btn-secondary btn-full" onClick={() => setPage('invest')}>Learn More</button>}
-          </div>
-        ))}
+      <div className="cars-grid">
+        {cars.map(car => <CarCard key={car.id} car={car} setPage={setPage} onInvest={c => {
+          if (!currentUser) { showToast('Please login', 'error'); setPage('login'); return; }
+          const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+          const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
+          if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
+          if (approved.length === 0) { showToast('Make a payment and get it approved before investing.', 'error'); return; }
+          setInvestCar(c); setAmount(5000);
+        }} />)}
       </div>
-      {activeModal && activePlan && (
+      {investCar && (
         <InvestFromBalanceModal
-          title={`${activePlan.name} Plan Investment`}
+          title={`Invest in ${investCar.name}`}
           amount={amount}
           setAmount={setAmount}
-          minAmount={activePlan.minInvest}
-          returnRate={activePlan.returnRate}
-          planLabel={activePlan.name}
-          onClose={() => setActiveModal(null)}
+          minAmount={1000}
+          returnRate="12%"
+          planLabel="Standard"
+          onClose={() => setInvestCar(null)}
           onConfirm={(finalAmount) => {
-            addInvestment({ carId: null, carName: 'Portfolio Fund', amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: activePlan.name, status: 'Active', returns: (finalAmount * parseFloat(activePlan.returnRate) / 100).toFixed(2) });
-            setActiveModal(null);
-            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${activePlan.name} plan!`, 'success');
+            addInvestment({ carId: investCar.id, carName: investCar.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
+            setInvestCar(null);
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${investCar.name}!`, 'success');
           }}
         />
       )}
@@ -1644,7 +1688,6 @@ const InvestPlans = ({ setPage, preview }) => {
   );
 };
 
-// ─── INVEST PAGE ──────────────────────────────────────────────────────────────
 const InvestPage = ({ setPage }) => {
   const { currentUser, payments } = useApp();
   const approvedPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved') : [];
@@ -1689,40 +1732,350 @@ const InvestPage = ({ setPage }) => {
   );
 };
 
-const ModelsInvestSection = ({ setPage }) => {
+const CarDetailPage = ({ carId, setPage }) => {
   const { cars, currentUser, showToast, addInvestment, payments } = useApp();
   const availableBalance = useAvailableBalance();
-  const [investCar, setInvestCar] = useState(null);
-  const [amount, setAmount] = useState(5000);
+  const [showInvest, setShowInvest] = useState(false);
+  const [amount, setAmount] = useState(10000);
+  const car = cars.find(c => c.id === Number(carId));
+  if (!car) return <div className="page" style={{ paddingTop: 100, textAlign: 'center' }}><p>Model not found.</p><button className="btn btn-primary" style={{ marginTop: 20 }} onClick={() => setPage('models')}>Back to Models</button></div>;
   return (
-    <>
-      <div className="cars-grid">
-        {cars.map(car => <CarCard key={car.id} car={car} setPage={setPage} onInvest={c => {
-          if (!currentUser) { showToast('Please login', 'error'); setPage('login'); return; }
-          const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
-          const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
-          if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
-          if (approved.length === 0) { showToast('Make a payment and get it approved before investing.', 'error'); return; }
-          setInvestCar(c); setAmount(5000);
-        }} />)}
+    <div className="page car-detail">
+      <div className="container">
+        <button className="btn btn-secondary btn-sm" style={{ marginBottom: 32 }} onClick={() => setPage('models')}>← Back to Models</button>
+        <div className="car-detail-hero">
+          <div className="car-detail-img"><img src={car.image} alt={car.name} onError={e => { e.target.src = 'https://via.placeholder.com/800x450/1a1a1a/555?text=' + car.name; }} /></div>
+          <div className="car-detail-info">
+            {car.badge && <span className="car-badge" style={{ position: 'static', display: 'inline-block', marginBottom: 12 }}>{car.badge}</span>}
+            <h1>{car.name}</h1>
+            <div className="car-detail-price">${Number(car.price).toLocaleString()}</div>
+            <div className="specs-grid">
+              {Object.entries(car.specs || {}).map(([k, v]) => (
+                <div key={k} className="spec-item">
+                  <div className="spec-label">{k.replace(/([A-Z])/g, ' $1')}</div>
+                  <div className="spec-value">{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
+                if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
+                const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+                const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
+                if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
+                if (approved.length === 0) { showToast('You must make a payment first before investing.', 'error'); setPage('invest'); return; }
+                setShowInvest(true);
+              }}>Invest Now</button>
+              <button className="btn btn-secondary" onClick={() => setPage('invest')}>View Plans</button>
+            </div>
+          </div>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, marginBottom: 40 }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 600, marginBottom: 20 }}>Investment Returns</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+            {[{ label: '1-Year Return', value: '12-18%' }, { label: '3-Year Return', value: '38-54%' }, { label: '5-Year Return', value: '72-96%' }, { label: 'Risk Level', value: 'Medium' }].map(i => (
+              <div key={i.label} className="spec-item">
+                <div className="spec-label">{i.label}</div>
+                <div className="spec-value" style={{ color: 'var(--green)' }}>{i.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-      {investCar && (
+      {showInvest && (
         <InvestFromBalanceModal
-          title={`Invest in ${investCar.name}`}
+          title={`Invest in ${car.name}`}
           amount={amount}
           setAmount={setAmount}
           minAmount={1000}
           returnRate="12%"
           planLabel="Standard"
-          onClose={() => setInvestCar(null)}
+          onClose={() => setShowInvest(false)}
           onConfirm={(finalAmount) => {
-            addInvestment({ carId: investCar.id, carName: investCar.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
-            setInvestCar(null);
-            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${investCar.name}!`, 'success');
+            addInvestment({ carId: car.id, carName: car.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
+            setShowInvest(false);
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${car.name}!`, 'success');
           }}
         />
       )}
-    </>
+    </div>
+  );
+};
+
+// ─── INVEST PLANS ────────────────────────────────────────────────────────────
+const InvestPage = ({ setPage }) => {
+  const { currentUser, payments } = useApp();
+  const approvedPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved') : [];
+  const pendingPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending') : [];
+  return (
+  <div className="page">
+    <div className="page-header">
+      <h1>Investment Plans</h1>
+      <p>Choose the plan that matches your goals and risk appetite</p>
+    </div>
+    <section className="section" style={{ paddingTop: 40 }}>
+      <div className="container">
+        {currentUser && approvedPayments.length === 0 && (
+          <div style={{ marginBottom: 32 }}>
+            {pendingPayments.length > 0 ? (
+              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.35)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>⏳</div>
+                <div>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>Payment Pending Approval</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Your payment receipt is under review. Investment buttons will unlock once approved by admin.</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(227,25,55,0.07)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>🔒</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>Payment Required to Invest</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Select a plan below, make your crypto payment, upload your receipt, and wait for admin approval to activate your investment.</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <InvestPlans setPage={setPage} />
+        <div style={{ marginTop: 60 }}>
+          <div className="section-header"><div className="section-tag">Also Available</div><h2 className="section-title">Invest in Specific Models</h2></div>
+          <ModelsInvestSection setPage={setPage} />
+        </div>
+      </div>
+    </section>
+  </div>
+  );
+};
+
+const CarDetailPage = ({ carId, setPage }) => {
+  const { cars, currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
+  const [showInvest, setShowInvest] = useState(false);
+  const [amount, setAmount] = useState(10000);
+  const car = cars.find(c => c.id === Number(carId));
+  if (!car) return <div className="page" style={{ paddingTop: 100, textAlign: 'center' }}><p>Model not found.</p><button className="btn btn-primary" style={{ marginTop: 20 }} onClick={() => setPage('models')}>Back to Models</button></div>;
+  return (
+    <div className="page car-detail">
+      <div className="container">
+        <button className="btn btn-secondary btn-sm" style={{ marginBottom: 32 }} onClick={() => setPage('models')}>← Back to Models</button>
+        <div className="car-detail-hero">
+          <div className="car-detail-img"><img src={car.image} alt={car.name} onError={e => { e.target.src = 'https://via.placeholder.com/800x450/1a1a1a/555?text=' + car.name; }} /></div>
+          <div className="car-detail-info">
+            {car.badge && <span className="car-badge" style={{ position: 'static', display: 'inline-block', marginBottom: 12 }}>{car.badge}</span>}
+            <h1>{car.name}</h1>
+            <div className="car-detail-price">${Number(car.price).toLocaleString()}</div>
+            <div className="specs-grid">
+              {Object.entries(car.specs || {}).map(([k, v]) => (
+                <div key={k} className="spec-item">
+                  <div className="spec-label">{k.replace(/([A-Z])/g, ' $1')}</div>
+                  <div className="spec-value">{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
+                if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
+                const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+                const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
+                if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
+                if (approved.length === 0) { showToast('You must make a payment first before investing.', 'error'); setPage('invest'); return; }
+                setShowInvest(true);
+              }}>Invest Now</button>
+              <button className="btn btn-secondary" onClick={() => setPage('invest')}>View Plans</button>
+            </div>
+          </div>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, marginBottom: 40 }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 600, marginBottom: 20 }}>Investment Returns</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+            {[{ label: '1-Year Return', value: '12-18%' }, { label: '3-Year Return', value: '38-54%' }, { label: '5-Year Return', value: '72-96%' }, { label: 'Risk Level', value: 'Medium' }].map(i => (
+              <div key={i.label} className="spec-item">
+                <div className="spec-label">{i.label}</div>
+                <div className="spec-value" style={{ color: 'var(--green)' }}>{i.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {showInvest && (
+        <InvestFromBalanceModal
+          title={`Invest in ${car.name}`}
+          amount={amount}
+          setAmount={setAmount}
+          minAmount={1000}
+          returnRate="12%"
+          planLabel="Standard"
+          onClose={() => setShowInvest(false)}
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: car.id, carName: car.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
+            setShowInvest(false);
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${car.name}!`, 'success');
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── INVEST PLANS ────────────────────────────────────────────────────────────
+
+
+const InvestPage = ({ setPage }) => {
+  const { currentUser, payments } = useApp();
+  const approvedPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved') : [];
+  const pendingPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending') : [];
+  return (
+  <div className="page">
+    <div className="page-header">
+      <h1>Investment Plans</h1>
+      <p>Choose the plan that matches your goals and risk appetite</p>
+    </div>
+    <section className="section" style={{ paddingTop: 40 }}>
+      <div className="container">
+        {currentUser && approvedPayments.length === 0 && (
+          <div style={{ marginBottom: 32 }}>
+            {pendingPayments.length > 0 ? (
+              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.35)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>⏳</div>
+                <div>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>Payment Pending Approval</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Your payment receipt is under review. Investment buttons will unlock once approved by admin.</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(227,25,55,0.07)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>🔒</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>Payment Required to Invest</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Select a plan below, make your crypto payment, upload your receipt, and wait for admin approval to activate your investment.</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <InvestPlans setPage={setPage} />
+        <div style={{ marginTop: 60 }}>
+          <div className="section-header"><div className="section-tag">Also Available</div><h2 className="section-title">Invest in Specific Models</h2></div>
+          <ModelsInvestSection setPage={setPage} />
+        </div>
+      </div>
+    </section>
+  </div>
+  );
+};
+
+const CarDetailPage = ({ carId, setPage }) => {
+  const { cars, currentUser, showToast, addInvestment, payments } = useApp();
+  const availableBalance = useAvailableBalance();
+  const [showInvest, setShowInvest] = useState(false);
+  const [amount, setAmount] = useState(10000);
+  const car = cars.find(c => c.id === Number(carId));
+  if (!car) return <div className="page" style={{ paddingTop: 100, textAlign: 'center' }}><p>Model not found.</p><button className="btn btn-primary" style={{ marginTop: 20 }} onClick={() => setPage('models')}>Back to Models</button></div>;
+  return (
+    <div className="page car-detail">
+      <div className="container">
+        <button className="btn btn-secondary btn-sm" style={{ marginBottom: 32 }} onClick={() => setPage('models')}>← Back to Models</button>
+        <div className="car-detail-hero">
+          <div className="car-detail-img"><img src={car.image} alt={car.name} onError={e => { e.target.src = 'https://via.placeholder.com/800x450/1a1a1a/555?text=' + car.name; }} /></div>
+          <div className="car-detail-info">
+            {car.badge && <span className="car-badge" style={{ position: 'static', display: 'inline-block', marginBottom: 12 }}>{car.badge}</span>}
+            <h1>{car.name}</h1>
+            <div className="car-detail-price">${Number(car.price).toLocaleString()}</div>
+            <div className="specs-grid">
+              {Object.entries(car.specs || {}).map(([k, v]) => (
+                <div key={k} className="spec-item">
+                  <div className="spec-label">{k.replace(/([A-Z])/g, ' $1')}</div>
+                  <div className="spec-value">{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
+                if (!currentUser) { showToast('Please login to invest', 'error'); setPage('login'); return; }
+                const approved = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved');
+                const pending = payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending');
+                if (approved.length === 0 && pending.length > 0) { showToast('Your payment is pending admin approval.', 'error'); return; }
+                if (approved.length === 0) { showToast('You must make a payment first before investing.', 'error'); setPage('invest'); return; }
+                setShowInvest(true);
+              }}>Invest Now</button>
+              <button className="btn btn-secondary" onClick={() => setPage('invest')}>View Plans</button>
+            </div>
+          </div>
+        </div>
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, marginBottom: 40 }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 600, marginBottom: 20 }}>Investment Returns</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+            {[{ label: '1-Year Return', value: '12-18%' }, { label: '3-Year Return', value: '38-54%' }, { label: '5-Year Return', value: '72-96%' }, { label: 'Risk Level', value: 'Medium' }].map(i => (
+              <div key={i.label} className="spec-item">
+                <div className="spec-label">{i.label}</div>
+                <div className="spec-value" style={{ color: 'var(--green)' }}>{i.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {showInvest && (
+        <InvestFromBalanceModal
+          title={`Invest in ${car.name}`}
+          amount={amount}
+          setAmount={setAmount}
+          minAmount={1000}
+          returnRate="12%"
+          planLabel="Standard"
+          onClose={() => setShowInvest(false)}
+          onConfirm={(finalAmount) => {
+            addInvestment({ carId: car.id, carName: car.name, amount: finalAmount, date: new Date().toISOString().split('T')[0], plan: 'Standard', status: 'Active', returns: (finalAmount * 0.12).toFixed(2) });
+            setShowInvest(false);
+            showToast(`Successfully invested $${finalAmount.toLocaleString()} in ${car.name}!`, 'success');
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── INVEST PLANS ────────────────────────────────────────────────────────────
+const InvestPage = ({ setPage }) => {
+  const { currentUser, payments } = useApp();
+  const approvedPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved') : [];
+  const pendingPayments = currentUser ? payments.filter(p => p.user_id === currentUser.id && p.status === 'Pending') : [];
+  return (
+  <div className="page">
+    <div className="page-header">
+      <h1>Investment Plans</h1>
+      <p>Choose the plan that matches your goals and risk appetite</p>
+    </div>
+    <section className="section" style={{ paddingTop: 40 }}>
+      <div className="container">
+        {currentUser && approvedPayments.length === 0 && (
+          <div style={{ marginBottom: 32 }}>
+            {pendingPayments.length > 0 ? (
+              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.35)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>⏳</div>
+                <div>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>Payment Pending Approval</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Your payment receipt is under review. Investment buttons will unlock once approved by admin.</div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ background: 'rgba(227,25,55,0.07)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 14, padding: 24, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 28 }}>🔒</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>Payment Required to Invest</div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>Select a plan below, make your crypto payment, upload your receipt, and wait for admin approval to activate your investment.</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <InvestPlans setPage={setPage} />
+        <div style={{ marginTop: 60 }}>
+          <div className="section-header"><div className="section-tag">Also Available</div><h2 className="section-title">Invest in Specific Models</h2></div>
+          <ModelsInvestSection setPage={setPage} />
+        </div>
+      </div>
+    </section>
+  </div>
   );
 };
 
