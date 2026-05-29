@@ -1,5 +1,5 @@
 
-import { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, createContext, useContext } from "react";
 import {
   dbGetUsers, dbRegister, dbLogin,
   dbGetCars, dbInsertCar, dbUpdateCar, dbDeleteCar, dbSeedCars,
@@ -12,6 +12,24 @@ import {
   dbMarkAllNotificationsRead, dbDeleteNotification,
   dbGetKyc, dbUpsertKyc, dbUpdateKycStatus,
 } from './supabase.js';
+
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error('App Error:', error, info); }
+  render() {
+    if (this.state.hasError) return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', color: '#f0f0f0', padding: 24, textAlign: 'center', gap: 16 }}>
+        <div style={{ fontSize: 48 }}>⚠️</div>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>Something went wrong</div>
+        <div style={{ fontSize: 14, color: '#888', maxWidth: 400 }}>{this.state.error?.message || 'An unexpected error occurred.'}</div>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 8, padding: '12px 28px', background: '#E31937', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, cursor: 'pointer' }}>Reload App</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 // ─── CONTEXT ────────────────────────────────────────────────────────────────
 const AppContext = createContext();
@@ -336,6 +354,385 @@ const GlobalStyle = () => (
 const Toast = ({ msg, type }) => (
   <div className={`toast ${msg ? 'show' : ''} toast-${type}`}>{msg}</div>
 );
+
+// ─── THEME TOGGLE BUTTON ─────────────────────────────────────────────────────
+const ThemeToggle = () => {
+  const { theme, setTheme } = useApp();
+  return (
+    <button
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      style={{
+        background: 'transparent', border: '1px solid var(--border-light)',
+        borderRadius: 20, padding: '6px 14px', cursor: 'pointer',
+        color: 'var(--text)', fontSize: 16, display: 'flex', alignItems: 'center', gap: 6,
+        transition: 'all 0.2s',
+      }}
+      title="Toggle theme"
+    >
+      {theme === 'dark' ? '☀️' : '🌙'}
+    </button>
+  );
+};
+
+// ─── INVESTMENT HISTORY CHART ─────────────────────────────────────────────────
+const InvestmentChart = ({ investments }) => {
+  if (!investments || investments.length === 0) return null;
+  const sorted = [...investments].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let cumulative = 0;
+  const points = sorted.map(inv => {
+    cumulative += Number(inv.amount);
+    return { date: inv.date, amount: cumulative, label: inv.car_name || 'Portfolio' };
+  });
+  const max = Math.max(...points.map(p => p.amount));
+  const width = 500, height = 180, padL = 60, padR = 20, padT = 20, padB = 40;
+  const w = width - padL - padR;
+  const h = height - padT - padB;
+  const toX = i => padL + (i / (points.length - 1 || 1)) * w;
+  const toY = v => padT + h - (v / (max || 1)) * h;
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(p.amount)}`).join(' ');
+  const areaD = `${pathD} L ${toX(points.length - 1)} ${padT + h} L ${toX(0)} ${padT + h} Z`;
+  return (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+      <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, marginBottom: 16 }}>📈 Portfolio Growth</div>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto' }}>
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#E31937" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#E31937" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+          <g key={i}>
+            <line x1={padL} y1={padT + h * t} x2={padL + w} y2={padT + h * t} stroke="var(--border)" strokeWidth="1" />
+            <text x={padL - 8} y={padT + h * t + 4} textAnchor="end" fontSize="10" fill="var(--muted)">${((max * (1 - t)) / 1000).toFixed(0)}k</text>
+          </g>
+        ))}
+        <path d={areaD} fill="url(#chartGrad)" />
+        <path d={pathD} fill="none" stroke="#E31937" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(p.amount)} r="4" fill="#E31937" stroke="var(--card)" strokeWidth="2" />
+        ))}
+        {points.map((p, i) => (
+          <text key={i} x={toX(i)} y={padT + h + 28} textAnchor="middle" fontSize="9" fill="var(--muted)">{p.date?.slice(5)}</text>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+// ─── ORDER TRACKING STEPPER ───────────────────────────────────────────────────
+const ORDER_STAGES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
+const OrderTracker = ({ order }) => {
+  const stageIndex = ORDER_STAGES.indexOf(order.status);
+  const activeIndex = stageIndex === -1 ? 0 : stageIndex;
+  if (order.status === 'Cancelled') return (
+    <div style={{ background: 'rgba(192,57,43,0.1)', border: '1px solid rgba(192,57,43,0.3)', borderRadius: 10, padding: 14, fontSize: 13, color: '#ff9999', textAlign: 'center' }}>❌ This order was cancelled</div>
+  );
+  return (
+    <div style={{ margin: '12px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 2, background: 'var(--border)', zIndex: 0 }} />
+        <div style={{ position: 'absolute', top: 14, left: '10%', width: `${(activeIndex / (ORDER_STAGES.length - 1)) * 80}%`, height: 2, background: 'var(--green)', zIndex: 1, transition: 'width 0.5s' }} />
+        {ORDER_STAGES.map((stage, i) => (
+          <div key={stage} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', zIndex: 2 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: i <= activeIndex ? 'var(--green)' : 'var(--border)', border: `2px solid ${i <= activeIndex ? 'var(--green)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: i <= activeIndex ? 'var(--black)' : 'var(--muted)', fontWeight: 700, transition: 'all 0.3s' }}>
+              {i < activeIndex ? '✓' : i + 1}
+            </div>
+            <div style={{ fontSize: 9, marginTop: 6, color: i <= activeIndex ? 'var(--text)' : 'var(--muted)', textAlign: 'center', fontWeight: i === activeIndex ? 700 : 400 }}>{stage}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── BROADCAST BANNER ─────────────────────────────────────────────────────────
+const BroadcastBanner = () => {
+  const { broadcasts } = useApp();
+  const [dismissed, setDismissed] = useState(() => LS.get('dismissed_broadcasts', []));
+  const active = broadcasts.filter(b => !dismissed.includes(b.id));
+  if (active.length === 0) return null;
+  const latest = active[0];
+  const dismiss = () => {
+    const newDismissed = [...dismissed, latest.id];
+    setDismissed(newDismissed);
+    LS.set('dismissed_broadcasts', newDismissed);
+  };
+  return (
+    <div style={{ background: 'linear-gradient(90deg, rgba(227,25,55,0.15), rgba(201,168,76,0.1))', borderBottom: '1px solid rgba(227,25,55,0.3)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'fixed', top: 70, left: 0, right: 0, zIndex: 998 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text)', flex: 1 }}>
+        <span style={{ fontSize: 16 }}>📢</span>
+        <span>{latest.message}</span>
+      </div>
+      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>✕</button>
+    </div>
+  );
+};
+
+// ─── WITHDRAWAL PAGE ──────────────────────────────────────────────────────────
+const WithdrawPage = ({ setPage }) => {
+  const { currentUser, payments, investments, orders, withdrawals, kyc, addWithdrawal, showToast } = useApp();
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('BTC');
+  const [wallet, setWallet] = useState('');
+  const [loading, setLoading] = useState(false);
+  if (!currentUser) { setPage('login'); return null; }
+  const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
+  const totalInvested = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.amount), 0);
+  const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || 0), 0);
+  const totalReturns = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.returns), 0);
+  const availableBalance = Math.max(0, totalDeposited - totalInvested - totalOrdered);
+  const withdrawable = availableBalance + totalReturns;
+  const userWithdrawals = withdrawals.filter(w => w.user_id === currentUser.id);
+
+  const handleSubmit = async () => {
+    const amt = Number(amount);
+    if (!amt || amt <= 0) { showToast('Enter a valid amount', 'error'); return; }
+    if (amt > withdrawable) { showToast(`Amount exceeds withdrawable balance of $${withdrawable.toLocaleString()}`, 'error'); return; }
+    if (!wallet.trim()) { showToast('Enter your wallet address', 'error'); return; }
+    setLoading(true);
+    const saved = await addWithdrawal({ amount: amt, method, wallet_address: wallet });
+    setLoading(false);
+    if (saved) { showToast('Withdrawal request submitted! Admin will process within 24–48hrs.', 'success'); setAmount(''); setWallet(''); }
+    else showToast('Failed to submit withdrawal. Try again.', 'error');
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header"><h1>Withdrawal Request</h1><p>Withdraw your available balance or returns</p></div>
+      <section className="section" style={{ paddingTop: 40 }}>
+        <div className="container" style={{ maxWidth: 700 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
+            <div className="stat-card"><div className="stat-card-label">Available Balance</div><div className="stat-card-value" style={{ color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div></div>
+            <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${totalReturns.toLocaleString()}</div></div>
+          </div>
+          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--muted)', fontSize: 14 }}>Total Withdrawable</span>
+            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${withdrawable.toLocaleString()}</span>
+          </div>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
+            <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>New Withdrawal Request</h3>
+            <div className="form-group">
+              <label className="form-label">Amount (USD)</label>
+              <input className="form-input" type="number" placeholder="Enter amount" value={amount} onChange={e => setAmount(e.target.value)} />
+              {Number(amount) > withdrawable && <div className="form-error">Exceeds withdrawable balance of ${withdrawable.toLocaleString()}</div>}
+            </div>
+            <div className="form-group">
+              <label className="form-label">Withdrawal Method</label>
+              <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
+                <option value="BTC">Bitcoin (BTC)</option>
+                <option value="ETH">Ethereum (ETH)</option>
+                <option value="USDT">Tether (USDT)</option>
+                <option value="Bank">Bank Transfer</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">{method === 'Bank' ? 'Bank Account Details' : 'Wallet Address'}</label>
+              <input className="form-input" placeholder={method === 'Bank' ? 'Account number / IBAN' : `Your ${method} wallet address`} value={wallet} onChange={e => setWallet(e.target.value)} />
+            </div>
+            <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
+              ⚠ Withdrawal requests are processed within 24–48 hours after admin approval. Ensure your wallet address is correct.
+            </div>
+            <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !amount || Number(amount) > withdrawable}>
+              {loading ? 'Submitting...' : 'Submit Withdrawal Request'}
+            </button>
+          </div>
+
+          {userWithdrawals.length > 0 && (
+            <div style={{ marginTop: 40 }}>
+              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Withdrawal History</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {userWithdrawals.map(w => (
+                  <div key={w.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>${Number(w.amount).toLocaleString()} via {w.method}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{w.wallet_address?.slice(0, 20)}...</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{w.date}</div>
+                    </div>
+                    <span className={`badge ${w.status === 'Approved' ? 'badge-green' : w.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{w.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// ─── DAILY RETURNS HELPER ─────────────────────────────────────────────────────
+// Calculates live growing return based on days since investment
+const calcLiveReturn = (inv) => {
+  const rate = parseFloat(inv.return_rate || inv.returnRate || '12') / 100;
+  const annual = Number(inv.amount) * rate;
+  const daily = annual / 365;
+  const start = new Date(inv.date);
+  const today = new Date();
+  const days = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  const cappedDays = Math.min(days, 365);
+  return { earned: parseFloat((daily * cappedDays).toFixed(2)), days: cappedDays, daily: parseFloat(daily.toFixed(2)), annual, pct: Math.min(100, (cappedDays / 365) * 100).toFixed(1), matured: cappedDays >= 365 };
+};
+
+// ─── INVESTMENT PROGRESS BAR ──────────────────────────────────────────────────
+const InvestmentProgressBar = ({ inv, compact }) => {
+  const r = calcLiveReturn(inv);
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: compact ? 11 : 12, color: 'var(--muted)', marginBottom: 4 }}>
+        <span>Day {r.days} of 365</span>
+        <span style={{ color: r.matured ? 'var(--green)' : 'var(--gold)' }}>{r.matured ? '✅ Matured' : `${r.pct}%`}</span>
+      </div>
+      <div style={{ height: compact ? 4 : 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${r.pct}%`, background: r.matured ? 'var(--green)' : 'linear-gradient(90deg, var(--red), var(--gold))', borderRadius: 3, transition: 'width 0.5s' }} />
+      </div>
+      {!compact && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+          <span style={{ color: 'var(--muted)' }}>+${r.daily}/day</span>
+          <span style={{ color: 'var(--green)', fontWeight: 600 }}>+${r.earned.toLocaleString()} earned</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
+const NotificationCenter = ({ setPage }) => {
+  const { notifications, markNotificationRead, markAllRead, deleteNotification } = useApp();
+  const [open, setOpen] = useState(false);
+  const unread = notifications.filter(n => !n.read).length;
+
+  const typeIcon = (type) => ({ payment: '💳', withdrawal: '💸', order: '🚗', kyc: '🪪', info: 'ℹ️' }[type] || 'ℹ️');
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(!open)} style={{ background: 'transparent', border: '1px solid var(--border-light)', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', color: 'var(--text)', fontSize: 18, position: 'relative', display: 'flex', alignItems: 'center' }}>
+        🔔
+        {unread > 0 && (
+          <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--red)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread > 9 ? '9+' : unread}</span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
+          <div style={{ position: 'absolute', right: 0, top: 44, width: 340, maxHeight: 480, overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 1000 }}>
+            <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>Notifications {unread > 0 && <span style={{ color: 'var(--red)', fontSize: 12 }}>({unread} new)</span>}</span>
+              {unread > 0 && <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 12, cursor: 'pointer' }}>Mark all read</button>}
+            </div>
+            {notifications.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>🔔 No notifications yet</div>
+            ) : notifications.map(n => (
+              <div key={n.id} onClick={() => markNotificationRead(n.id)} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', background: n.read ? 'transparent' : 'rgba(227,25,55,0.05)', cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 20, flexShrink: 0 }}>{typeIcon(n.type)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: n.read ? 400 : 700, fontSize: 13, marginBottom: 2 }}>{n.title}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{n.message}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                </div>
+                <button onClick={e => { e.stopPropagation(); deleteNotification(n.id); }} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── KYC PAGE ─────────────────────────────────────────────────────────────────
+const KycPage = ({ setPage }) => {
+  const { currentUser, kyc, submitKyc, showToast } = useApp();
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  if (!currentUser) { setPage('login'); return null; }
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!preview) { showToast('Please select an ID document', 'error'); return; }
+    setLoading(true);
+    const saved = await submitKyc(preview);
+    setLoading(false);
+    if (saved) showToast('KYC submitted! Admin will review within 24hrs.', 'success');
+    else showToast('Submission failed. Please try again.', 'error');
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header"><h1>Identity Verification</h1><p>KYC is required to enable withdrawals</p></div>
+      <section className="section" style={{ paddingTop: 40 }}>
+        <div className="container" style={{ maxWidth: 600 }}>
+
+          {/* Status banner */}
+          {kyc && (
+            <div style={{ background: kyc.status === 'Approved' ? 'rgba(0,200,83,0.1)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${kyc.status === 'Approved' ? 'rgba(0,200,83,0.3)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.3)' : 'rgba(201,168,76,0.3)'}`, borderRadius: 12, padding: 20, marginBottom: 28, display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ fontSize: 32 }}>{kyc.status === 'Approved' ? '✅' : kyc.status === 'Rejected' ? '❌' : '⏳'}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>KYC {kyc.status}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  {kyc.status === 'Approved' && 'Your identity has been verified. Withdrawals are enabled.'}
+                  {kyc.status === 'Pending' && 'Your document is under review. This usually takes 24 hours.'}
+                  {kyc.status === 'Rejected' && 'Your document was rejected. Please resubmit a clearer image.'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(!kyc || kyc.status === 'Rejected') && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
+              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Upload ID Document</h3>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>Please upload a clear photo of a valid government-issued ID (passport, national ID, or driver's license).</p>
+
+              <input type="file" accept="image/*" id="kyc-doc" style={{ display: 'none' }} onChange={handleFile} />
+
+              <div onClick={() => document.getElementById('kyc-doc').click()} style={{ border: '2px dashed var(--border-light)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', marginBottom: 20, transition: 'border-color 0.2s' }}>
+                {preview ? (
+                  <img src={preview} alt="ID preview" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 8, objectFit: 'contain' }} />
+                ) : (
+                  <>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🪪</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Tap to choose your ID document</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>JPG, PNG supported · Max 5MB</div>
+                  </>
+                )}
+              </div>
+
+              {preview && (
+                <button className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} onClick={() => setPreview(null)}>Remove & choose again</button>
+              )}
+
+              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
+                ⚠ Your document is stored securely and only used for identity verification purposes.
+              </div>
+
+              <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !preview}>
+                {loading ? 'Submitting...' : 'Submit for Verification'}
+              </button>
+            </div>
+          )}
+
+          {kyc?.status === 'Approved' && (
+            <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+              <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Fully Verified</div>
+              <p style={{ color: 'var(--muted)', marginBottom: 24 }}>Your identity has been verified. You can now make withdrawals.</p>
+              <button className="btn btn-primary" onClick={() => setPage('withdraw')}>Go to Withdraw</button>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
+
 
 // ─── NAVBAR ──────────────────────────────────────────────────────────────────
 const Navbar = ({ page, setPage }) => {
@@ -2876,6 +3273,7 @@ export default function App() {
   };
 
   return (
+    <ErrorBoundary>
     <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme }}>
       <GlobalStyle />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
@@ -2883,383 +3281,7 @@ export default function App() {
       {!noFooterPages.includes(page) && appReady && <Footer setPage={setPage} />}
       <Toast msg={toast.msg} type={toast.type} />
     </AppContext.Provider>
+    </ErrorBoundary>
   );
 }
 
-// ─── THEME TOGGLE BUTTON ─────────────────────────────────────────────────────
-const ThemeToggle = () => {
-  const { theme, setTheme } = useApp();
-  return (
-    <button
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      style={{
-        background: 'transparent', border: '1px solid var(--border-light)',
-        borderRadius: 20, padding: '6px 14px', cursor: 'pointer',
-        color: 'var(--text)', fontSize: 16, display: 'flex', alignItems: 'center', gap: 6,
-        transition: 'all 0.2s',
-      }}
-      title="Toggle theme"
-    >
-      {theme === 'dark' ? '☀️' : '🌙'}
-    </button>
-  );
-};
-
-// ─── INVESTMENT HISTORY CHART ─────────────────────────────────────────────────
-const InvestmentChart = ({ investments }) => {
-  if (!investments || investments.length === 0) return null;
-  const sorted = [...investments].sort((a, b) => new Date(a.date) - new Date(b.date));
-  let cumulative = 0;
-  const points = sorted.map(inv => {
-    cumulative += Number(inv.amount);
-    return { date: inv.date, amount: cumulative, label: inv.car_name || 'Portfolio' };
-  });
-  const max = Math.max(...points.map(p => p.amount));
-  const width = 500, height = 180, padL = 60, padR = 20, padT = 20, padB = 40;
-  const w = width - padL - padR;
-  const h = height - padT - padB;
-  const toX = i => padL + (i / (points.length - 1 || 1)) * w;
-  const toY = v => padT + h - (v / (max || 1)) * h;
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(p.amount)}`).join(' ');
-  const areaD = `${pathD} L ${toX(points.length - 1)} ${padT + h} L ${toX(0)} ${padT + h} Z`;
-  return (
-    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
-      <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, marginBottom: 16 }}>📈 Portfolio Growth</div>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto' }}>
-        <defs>
-          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#E31937" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#E31937" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
-          <g key={i}>
-            <line x1={padL} y1={padT + h * t} x2={padL + w} y2={padT + h * t} stroke="var(--border)" strokeWidth="1" />
-            <text x={padL - 8} y={padT + h * t + 4} textAnchor="end" fontSize="10" fill="var(--muted)">${((max * (1 - t)) / 1000).toFixed(0)}k</text>
-          </g>
-        ))}
-        <path d={areaD} fill="url(#chartGrad)" />
-        <path d={pathD} fill="none" stroke="#E31937" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((p, i) => (
-          <circle key={i} cx={toX(i)} cy={toY(p.amount)} r="4" fill="#E31937" stroke="var(--card)" strokeWidth="2" />
-        ))}
-        {points.map((p, i) => (
-          <text key={i} x={toX(i)} y={padT + h + 28} textAnchor="middle" fontSize="9" fill="var(--muted)">{p.date?.slice(5)}</text>
-        ))}
-      </svg>
-    </div>
-  );
-};
-
-// ─── ORDER TRACKING STEPPER ───────────────────────────────────────────────────
-const ORDER_STAGES = ['Pending', 'Confirmed', 'Processing', 'Shipped', 'Delivered'];
-const OrderTracker = ({ order }) => {
-  const stageIndex = ORDER_STAGES.indexOf(order.status);
-  const activeIndex = stageIndex === -1 ? 0 : stageIndex;
-  if (order.status === 'Cancelled') return (
-    <div style={{ background: 'rgba(192,57,43,0.1)', border: '1px solid rgba(192,57,43,0.3)', borderRadius: 10, padding: 14, fontSize: 13, color: '#ff9999', textAlign: 'center' }}>❌ This order was cancelled</div>
-  );
-  return (
-    <div style={{ margin: '12px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 2, background: 'var(--border)', zIndex: 0 }} />
-        <div style={{ position: 'absolute', top: 14, left: '10%', width: `${(activeIndex / (ORDER_STAGES.length - 1)) * 80}%`, height: 2, background: 'var(--green)', zIndex: 1, transition: 'width 0.5s' }} />
-        {ORDER_STAGES.map((stage, i) => (
-          <div key={stage} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', zIndex: 2 }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: i <= activeIndex ? 'var(--green)' : 'var(--border)', border: `2px solid ${i <= activeIndex ? 'var(--green)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: i <= activeIndex ? 'var(--black)' : 'var(--muted)', fontWeight: 700, transition: 'all 0.3s' }}>
-              {i < activeIndex ? '✓' : i + 1}
-            </div>
-            <div style={{ fontSize: 9, marginTop: 6, color: i <= activeIndex ? 'var(--text)' : 'var(--muted)', textAlign: 'center', fontWeight: i === activeIndex ? 700 : 400 }}>{stage}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ─── BROADCAST BANNER ─────────────────────────────────────────────────────────
-const BroadcastBanner = () => {
-  const { broadcasts } = useApp();
-  const [dismissed, setDismissed] = useState(() => LS.get('dismissed_broadcasts', []));
-  const active = broadcasts.filter(b => !dismissed.includes(b.id));
-  if (active.length === 0) return null;
-  const latest = active[0];
-  const dismiss = () => {
-    const newDismissed = [...dismissed, latest.id];
-    setDismissed(newDismissed);
-    LS.set('dismissed_broadcasts', newDismissed);
-  };
-  return (
-    <div style={{ background: 'linear-gradient(90deg, rgba(227,25,55,0.15), rgba(201,168,76,0.1))', borderBottom: '1px solid rgba(227,25,55,0.3)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'fixed', top: 70, left: 0, right: 0, zIndex: 998 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text)', flex: 1 }}>
-        <span style={{ fontSize: 16 }}>📢</span>
-        <span>{latest.message}</span>
-      </div>
-      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>✕</button>
-    </div>
-  );
-};
-
-// ─── WITHDRAWAL PAGE ──────────────────────────────────────────────────────────
-const WithdrawPage = ({ setPage }) => {
-  const { currentUser, payments, investments, orders, withdrawals, kyc, addWithdrawal, showToast } = useApp();
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState('BTC');
-  const [wallet, setWallet] = useState('');
-  const [loading, setLoading] = useState(false);
-  if (!currentUser) { setPage('login'); return null; }
-  const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
-  const totalInvested = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.amount), 0);
-  const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || 0), 0);
-  const totalReturns = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.returns), 0);
-  const availableBalance = Math.max(0, totalDeposited - totalInvested - totalOrdered);
-  const withdrawable = availableBalance + totalReturns;
-  const userWithdrawals = withdrawals.filter(w => w.user_id === currentUser.id);
-
-  const handleSubmit = async () => {
-    const amt = Number(amount);
-    if (!amt || amt <= 0) { showToast('Enter a valid amount', 'error'); return; }
-    if (amt > withdrawable) { showToast(`Amount exceeds withdrawable balance of $${withdrawable.toLocaleString()}`, 'error'); return; }
-    if (!wallet.trim()) { showToast('Enter your wallet address', 'error'); return; }
-    setLoading(true);
-    const saved = await addWithdrawal({ amount: amt, method, wallet_address: wallet });
-    setLoading(false);
-    if (saved) { showToast('Withdrawal request submitted! Admin will process within 24–48hrs.', 'success'); setAmount(''); setWallet(''); }
-    else showToast('Failed to submit withdrawal. Try again.', 'error');
-  };
-
-  return (
-    <div className="page">
-      <div className="page-header"><h1>Withdrawal Request</h1><p>Withdraw your available balance or returns</p></div>
-      <section className="section" style={{ paddingTop: 40 }}>
-        <div className="container" style={{ maxWidth: 700 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-            <div className="stat-card"><div className="stat-card-label">Available Balance</div><div className="stat-card-value" style={{ color: 'var(--green)' }}>${availableBalance.toLocaleString()}</div></div>
-            <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${totalReturns.toLocaleString()}</div></div>
-          </div>
-          <div style={{ background: 'rgba(0,200,83,0.08)', border: '1px solid rgba(0,200,83,0.25)', borderRadius: 12, padding: 16, marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'var(--muted)', fontSize: 14 }}>Total Withdrawable</span>
-            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>${withdrawable.toLocaleString()}</span>
-          </div>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
-            <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>New Withdrawal Request</h3>
-            <div className="form-group">
-              <label className="form-label">Amount (USD)</label>
-              <input className="form-input" type="number" placeholder="Enter amount" value={amount} onChange={e => setAmount(e.target.value)} />
-              {Number(amount) > withdrawable && <div className="form-error">Exceeds withdrawable balance of ${withdrawable.toLocaleString()}</div>}
-            </div>
-            <div className="form-group">
-              <label className="form-label">Withdrawal Method</label>
-              <select className="form-select" value={method} onChange={e => setMethod(e.target.value)}>
-                <option value="BTC">Bitcoin (BTC)</option>
-                <option value="ETH">Ethereum (ETH)</option>
-                <option value="USDT">Tether (USDT)</option>
-                <option value="Bank">Bank Transfer</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">{method === 'Bank' ? 'Bank Account Details' : 'Wallet Address'}</label>
-              <input className="form-input" placeholder={method === 'Bank' ? 'Account number / IBAN' : `Your ${method} wallet address`} value={wallet} onChange={e => setWallet(e.target.value)} />
-            </div>
-            <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
-              ⚠ Withdrawal requests are processed within 24–48 hours after admin approval. Ensure your wallet address is correct.
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !amount || Number(amount) > withdrawable}>
-              {loading ? 'Submitting...' : 'Submit Withdrawal Request'}
-            </button>
-          </div>
-
-          {userWithdrawals.length > 0 && (
-            <div style={{ marginTop: 40 }}>
-              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Withdrawal History</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {userWithdrawals.map(w => (
-                  <div key={w.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>${Number(w.amount).toLocaleString()} via {w.method}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{w.wallet_address?.slice(0, 20)}...</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{w.date}</div>
-                    </div>
-                    <span className={`badge ${w.status === 'Approved' ? 'badge-green' : w.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{w.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-};
-
-// ─── DAILY RETURNS HELPER ─────────────────────────────────────────────────────
-// Calculates live growing return based on days since investment
-const calcLiveReturn = (inv) => {
-  const rate = parseFloat(inv.return_rate || inv.returnRate || '12') / 100;
-  const annual = Number(inv.amount) * rate;
-  const daily = annual / 365;
-  const start = new Date(inv.date);
-  const today = new Date();
-  const days = Math.floor((today - start) / (1000 * 60 * 60 * 24));
-  const cappedDays = Math.min(days, 365);
-  return { earned: parseFloat((daily * cappedDays).toFixed(2)), days: cappedDays, daily: parseFloat(daily.toFixed(2)), annual, pct: Math.min(100, (cappedDays / 365) * 100).toFixed(1), matured: cappedDays >= 365 };
-};
-
-// ─── INVESTMENT PROGRESS BAR ──────────────────────────────────────────────────
-const InvestmentProgressBar = ({ inv, compact }) => {
-  const r = calcLiveReturn(inv);
-  return (
-    <div style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: compact ? 11 : 12, color: 'var(--muted)', marginBottom: 4 }}>
-        <span>Day {r.days} of 365</span>
-        <span style={{ color: r.matured ? 'var(--green)' : 'var(--gold)' }}>{r.matured ? '✅ Matured' : `${r.pct}%`}</span>
-      </div>
-      <div style={{ height: compact ? 4 : 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${r.pct}%`, background: r.matured ? 'var(--green)' : 'linear-gradient(90deg, var(--red), var(--gold))', borderRadius: 3, transition: 'width 0.5s' }} />
-      </div>
-      {!compact && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
-          <span style={{ color: 'var(--muted)' }}>+${r.daily}/day</span>
-          <span style={{ color: 'var(--green)', fontWeight: 600 }}>+${r.earned.toLocaleString()} earned</span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
-const NotificationCenter = ({ setPage }) => {
-  const { notifications, markNotificationRead, markAllRead, deleteNotification } = useApp();
-  const [open, setOpen] = useState(false);
-  const unread = notifications.filter(n => !n.read).length;
-
-  const typeIcon = (type) => ({ payment: '💳', withdrawal: '💸', order: '🚗', kyc: '🪪', info: 'ℹ️' }[type] || 'ℹ️');
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(!open)} style={{ background: 'transparent', border: '1px solid var(--border-light)', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', color: 'var(--text)', fontSize: 18, position: 'relative', display: 'flex', alignItems: 'center' }}>
-        🔔
-        {unread > 0 && (
-          <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--red)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread > 9 ? '9+' : unread}</span>
-        )}
-      </button>
-
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
-          <div style={{ position: 'absolute', right: 0, top: 44, width: 340, maxHeight: 480, overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 1000 }}>
-            <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>Notifications {unread > 0 && <span style={{ color: 'var(--red)', fontSize: 12 }}>({unread} new)</span>}</span>
-              {unread > 0 && <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 12, cursor: 'pointer' }}>Mark all read</button>}
-            </div>
-            {notifications.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>🔔 No notifications yet</div>
-            ) : notifications.map(n => (
-              <div key={n.id} onClick={() => markNotificationRead(n.id)} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', background: n.read ? 'transparent' : 'rgba(227,25,55,0.05)', cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ fontSize: 20, flexShrink: 0 }}>{typeIcon(n.type)}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: n.read ? 400 : 700, fontSize: 13, marginBottom: 2 }}>{n.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{n.message}</div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{new Date(n.created_at).toLocaleDateString()}</div>
-                </div>
-                <button onClick={e => { e.stopPropagation(); deleteNotification(n.id); }} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// ─── KYC PAGE ─────────────────────────────────────────────────────────────────
-const KycPage = ({ setPage }) => {
-  const { currentUser, kyc, submitKyc, showToast } = useApp();
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  if (!currentUser) { setPage('login'); return null; }
-
-  const handleFile = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setPreview(ev.target.result);
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = async () => {
-    if (!preview) { showToast('Please select an ID document', 'error'); return; }
-    setLoading(true);
-    const saved = await submitKyc(preview);
-    setLoading(false);
-    if (saved) showToast('KYC submitted! Admin will review within 24hrs.', 'success');
-    else showToast('Submission failed. Please try again.', 'error');
-  };
-
-  return (
-    <div className="page">
-      <div className="page-header"><h1>Identity Verification</h1><p>KYC is required to enable withdrawals</p></div>
-      <section className="section" style={{ paddingTop: 40 }}>
-        <div className="container" style={{ maxWidth: 600 }}>
-
-          {/* Status banner */}
-          {kyc && (
-            <div style={{ background: kyc.status === 'Approved' ? 'rgba(0,200,83,0.1)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${kyc.status === 'Approved' ? 'rgba(0,200,83,0.3)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.3)' : 'rgba(201,168,76,0.3)'}`, borderRadius: 12, padding: 20, marginBottom: 28, display: 'flex', gap: 14, alignItems: 'center' }}>
-              <div style={{ fontSize: 32 }}>{kyc.status === 'Approved' ? '✅' : kyc.status === 'Rejected' ? '❌' : '⏳'}</div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>KYC {kyc.status}</div>
-                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {kyc.status === 'Approved' && 'Your identity has been verified. Withdrawals are enabled.'}
-                  {kyc.status === 'Pending' && 'Your document is under review. This usually takes 24 hours.'}
-                  {kyc.status === 'Rejected' && 'Your document was rejected. Please resubmit a clearer image.'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(!kyc || kyc.status === 'Rejected') && (
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
-              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Upload ID Document</h3>
-              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>Please upload a clear photo of a valid government-issued ID (passport, national ID, or driver's license).</p>
-
-              <input type="file" accept="image/*" id="kyc-doc" style={{ display: 'none' }} onChange={handleFile} />
-
-              <div onClick={() => document.getElementById('kyc-doc').click()} style={{ border: '2px dashed var(--border-light)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', marginBottom: 20, transition: 'border-color 0.2s' }}>
-                {preview ? (
-                  <img src={preview} alt="ID preview" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 8, objectFit: 'contain' }} />
-                ) : (
-                  <>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>🪪</div>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Tap to choose your ID document</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>JPG, PNG supported · Max 5MB</div>
-                  </>
-                )}
-              </div>
-
-              {preview && (
-                <button className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} onClick={() => setPreview(null)}>Remove & choose again</button>
-              )}
-
-              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
-                ⚠ Your document is stored securely and only used for identity verification purposes.
-              </div>
-
-              <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !preview}>
-                {loading ? 'Submitting...' : 'Submit for Verification'}
-              </button>
-            </div>
-          )}
-
-          {kyc?.status === 'Approved' && (
-            <div style={{ textAlign: 'center', padding: '40px 24px' }}>
-              <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Fully Verified</div>
-              <p style={{ color: 'var(--muted)', marginBottom: 24 }}>Your identity has been verified. You can now make withdrawals.</p>
-              <button className="btn btn-primary" onClick={() => setPage('withdraw')}>Go to Withdraw</button>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-};
