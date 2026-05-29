@@ -8,6 +8,9 @@ import {
   dbGetPayments, dbInsertPayment, dbUpdatePaymentStatus,
   dbGetWithdrawals, dbInsertWithdrawal, dbUpdateWithdrawalStatus,
   dbGetBroadcasts, dbInsertBroadcast, dbDeleteBroadcast,
+  dbGetNotifications, dbInsertNotification, dbMarkNotificationRead,
+  dbMarkAllNotificationsRead, dbDeleteNotification,
+  dbGetKyc, dbUpsertKyc, dbUpdateKycStatus,
 } from './supabase.js';
 
 // ─── CONTEXT ────────────────────────────────────────────────────────────────
@@ -375,6 +378,7 @@ const Navbar = ({ page, setPage }) => {
           </div>
           <div className="nav-actions">
             <ThemeToggle />
+            {currentUser && <NotificationCenter setPage={setPage} />}
             {currentUser ? (
               <>
                 <button className="btn-nav btn-nav-ghost" onClick={() => setPage('dashboard')}>Dashboard</button>
@@ -398,6 +402,7 @@ const Navbar = ({ page, setPage }) => {
           <>
             <span className="mobile-link" onClick={() => { setPage('dashboard'); setMenuOpen(false); }}>Dashboard</span>
             <span className="mobile-link" onClick={() => { setPage('withdraw'); setMenuOpen(false); }}>Withdraw</span>
+            <span className="mobile-link" onClick={() => { setPage('kyc'); setMenuOpen(false); }}>🪪 KYC Verification</span>
             <span className="mobile-link" onClick={() => { logout(); setMenuOpen(false); }}>Logout</span>
           </>
         ) : (
@@ -1735,6 +1740,25 @@ const DashboardPage = ({ setPage }) => {
   const { appReady } = useApp();
   if (!appReady) return null;
   if (!currentUser) { setPage('login'); return null; }
+  // KYC check — block withdrawals if not approved
+  if (!kyc || kyc.status !== 'Approved') return (
+    <div className="page">
+      <div className="page-header"><h1>Withdrawal</h1><p>Verify your identity to withdraw</p></div>
+      <section className="section" style={{ paddingTop: 40 }}>
+        <div className="container" style={{ maxWidth: 500 }}>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 50, marginBottom: 16 }}>🪪</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>KYC Required</div>
+            <p style={{ color: 'var(--muted)', marginBottom: 12, lineHeight: 1.7 }}>
+              {!kyc ? 'You need to verify your identity before making withdrawals.' : kyc.status === 'Pending' ? '⏳ Your KYC is under review. Withdrawals will be enabled once approved.' : '❌ Your KYC was rejected. Please resubmit a clearer document.'}
+            </p>
+            {kyc?.status !== 'Pending' && <button className="btn btn-primary" onClick={() => setPage('kyc')}>Complete KYC Verification</button>}
+            {kyc?.status === 'Pending' && <button className="btn btn-secondary" onClick={() => setPage('dashboard')}>Back to Dashboard</button>}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
   const userInvestments = investments.filter(i => i.user_id === currentUser.id);
   const totalInvested = userInvestments.reduce((s, i) => s + Number(i.amount), 0);
   const totalReturns = userInvestments.reduce((s, i) => s + Number(i.returns), 0);
@@ -1760,6 +1784,7 @@ const DashboardPage = ({ setPage }) => {
               <div className="sidebar-item" onClick={() => setPage('invest')}>⚡ Invest More</div>
               <div className="sidebar-item" onClick={() => setPage('payment')}>💰 Deposit</div>
               <div className="sidebar-item" onClick={() => setPage('withdraw')}>💸 Withdraw</div>
+              <div className="sidebar-item" onClick={() => setPage('kyc')}>🪪 KYC Verify</div>
               <div className="sidebar-item" onClick={() => setPage('models')}>🚗 Browse Models</div>
               <div className="sidebar-item" onClick={() => setPage('orders')}>📦 Order a Car</div>
               <div className="sidebar-item" onClick={() => setPage('contact')}>💬 Support</div>
@@ -1772,7 +1797,7 @@ const DashboardPage = ({ setPage }) => {
                 <div className="dash-title">Welcome back, {currentUser.name.split(' ')[0]}! 👋</div>
                 <div className="stats-row">
                   <div className="stat-card"><div className="stat-card-label">Total Invested</div><div className="stat-card-value">${totalInvested.toLocaleString()}</div><div className="stat-card-change positive">↑ Active Portfolio</div></div>
-                  <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${totalReturns.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change positive">↑ Estimated Annual</div></div>
+                  <div className="stat-card"><div className="stat-card-label">Total Returns</div><div className="stat-card-value positive">${userInvestments.reduce((s, inv) => s + calcLiveReturn(inv).earned, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change positive">↑ Live & Growing Daily</div></div>
                   <div className="stat-card"><div className="stat-card-label">Active Investments</div><div className="stat-card-value">{userInvestments.length}</div><div className="stat-card-change" style={{ color: 'var(--muted)' }}>Positions Open</div></div>
                   <div className="stat-card"><div className="stat-card-label">Portfolio Value</div><div className="stat-card-value">${(totalInvested + totalReturns).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change positive">↑ {totalInvested > 0 ? ((totalReturns / totalInvested) * 100).toFixed(1) : '0'}% ROI</div></div>
                   <div className="stat-card"><div className="stat-card-label">Available Balance</div><div className="stat-card-value" style={{ color: availableBalance > 0 ? 'var(--green)' : 'var(--muted)' }}>${availableBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div><div className="stat-card-change" style={{ color: 'var(--muted)' }}>Ready to Invest</div></div>
@@ -1784,9 +1809,10 @@ const DashboardPage = ({ setPage }) => {
                     <div className="table-header"><div className="table-title">Recent Activity</div></div>
                     <table>
                       <thead><tr><th>Asset</th><th>Amount</th><th>Plan</th><th>Returns</th><th>Status</th></tr></thead>
-                      <tbody>{userInvestments.slice(-5).reverse().map((inv, i) => (
-                        <tr key={i}><td>{inv.carName}</td><td>${Number(inv.amount).toLocaleString()}</td><td>{inv.plan}</td><td className="positive">+${Number(inv.returns).toLocaleString()}</td><td><span className="badge badge-green">{inv.status}</span></td></tr>
-                      ))}</tbody>
+                      <tbody>{userInvestments.slice(-5).reverse().map((inv, i) => {
+                        const r = calcLiveReturn(inv);
+                        return <tr key={i}><td>{inv.car_name || inv.carName}</td><td>${Number(inv.amount).toLocaleString()}</td><td>{inv.plan}</td><td className="positive">+${r.earned.toLocaleString()}</td><td><InvestmentProgressBar inv={inv} compact /></td></tr>;
+                      })}</tbody>
                     </table>
                   </div>
                 )}
@@ -1798,15 +1824,35 @@ const DashboardPage = ({ setPage }) => {
                 <InvestmentChart investments={userInvestments} />
                 {userInvestments.length === 0 ? (
                   <div className="empty-state"><div className="empty-state-icon">📭</div><p style={{ marginBottom: 24 }}>No investments in your portfolio yet.</p><button className="btn btn-primary" onClick={() => setPage('invest')}>Make Your First Investment</button></div>
-                ) : userInvestments.map((inv, i) => (
-                  <div key={i} className="investment-item">
-                    <div><div style={{ fontWeight: 600 }}>{inv.car_name || inv.carName}</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>{inv.date}</div></div>
-                    <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Invested</div><div style={{ fontWeight: 600 }}>${Number(inv.amount).toLocaleString()}</div></div>
-                    <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Returns</div><div className="positive" style={{ fontWeight: 600 }}>+${Number(inv.returns).toLocaleString()}</div></div>
-                    <div><div style={{ fontSize: 12, color: 'var(--muted)' }}>Plan</div><span className="badge badge-blue">{inv.plan}</span></div>
-                    <span className="badge badge-green">{inv.status || 'Active'}</span>
-                  </div>
-                ))}
+                ) : userInvestments.map((inv, i) => {
+                  const r = calcLiveReturn(inv);
+                  return (
+                    <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 2 }}>{inv.car_name || inv.carName || 'Portfolio Fund'}</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Started {inv.date} · <span className="badge badge-blue" style={{ fontSize: 10 }}>{inv.plan}</span></div>
+                        </div>
+                        <span className={`badge ${r.matured ? 'badge-green' : 'badge-gold'}`}>{r.matured ? '✅ Matured' : 'Active'}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+                        <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Invested</div>
+                          <div style={{ fontWeight: 700, fontSize: 15 }}>${Number(inv.amount).toLocaleString()}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', background: 'rgba(0,200,83,0.06)', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Earned</div>
+                          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--green)' }}>+${r.earned.toLocaleString()}</div>
+                        </div>
+                        <div style={{ textAlign: 'center', background: 'rgba(201,168,76,0.06)', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>Annual</div>
+                          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--gold)' }}>${r.annual.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                        </div>
+                      </div>
+                      <InvestmentProgressBar inv={inv} />
+                    </div>
+                  );
+                })}
               </>
             )}
             {tab === 'payments' && (
@@ -1940,7 +1986,7 @@ const AdminLoginPage = ({ setPage }) => {
 
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 const AdminPanel = ({ setPage }) => {
-  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, updatePaymentStatus, updateOrderStatus, updateWithdrawalStatus, addBroadcast, deleteBroadcast, showToast, setAdminLoggedIn } = useApp();
+  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, withdrawals, allKyc, broadcasts, updatePaymentStatus, updateOrderStatus, updateWithdrawalStatus, updateKycStatus, addBroadcast, deleteBroadcast, showToast, setAdminLoggedIn } = useApp();
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [section, setSection] = useState('overview');
@@ -1982,6 +2028,7 @@ const AdminPanel = ({ setPage }) => {
     { id: 'payments', icon: '🧾', label: 'Payments' },
     { id: 'orders', icon: '🛒', label: 'Car Orders' },
     { id: 'withdrawals', icon: '💸', label: 'Withdrawals' },
+    { id: 'kyc', icon: '🪪', label: 'KYC Requests' },
     { id: 'broadcasts', icon: '📢', label: 'Broadcasts' },
   ];
 
@@ -2250,6 +2297,54 @@ const AdminPanel = ({ setPage }) => {
               </div>
             )}
 
+            {section === 'kyc' && (
+              <div className="admin-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <div className="admin-card-title" style={{ marginBottom: 0 }}>KYC Requests ({allKyc.length})</div>
+                  <div style={{ display: 'flex', gap: 8, fontSize: 12 }}>
+                    <span className="badge badge-gold">Pending: {allKyc.filter(k => k.status === 'Pending').length}</span>
+                    <span className="badge badge-green">Approved: {allKyc.filter(k => k.status === 'Approved').length}</span>
+                    <span className="badge badge-red">Rejected: {allKyc.filter(k => k.status === 'Rejected').length}</span>
+                  </div>
+                </div>
+                {allKyc.length === 0 ? (
+                  <div className="empty-state"><div className="empty-state-icon">🪪</div><p>No KYC requests yet.</p></div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {allKyc.slice().sort((a,b) => new Date(b.submitted_at) - new Date(a.submitted_at)).map(k => (
+                      <div key={k.user_id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16, alignItems: 'start' }}>
+                          <div onClick={() => window.open(k.document_image, '_blank')} style={{ width: 80, height: 60, borderRadius: 8, overflow: 'hidden', background: 'var(--dark)', border: '1px solid var(--border)', cursor: 'pointer', flexShrink: 0 }}>
+                            {k.document_image ? <img src={k.document_image} alt="ID" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🪪</div>}
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontFamily: 'Rajdhani', fontSize: 17, fontWeight: 700 }}>{k.user_name}</span>
+                              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{k.user_email}</span>
+                              <span className={`badge ${k.status === 'Approved' ? 'badge-green' : k.status === 'Rejected' ? 'badge-red' : 'badge-gold'}`}>{k.status}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Submitted: {new Date(k.submitted_at).toLocaleDateString()}</div>
+                            {k.document_image && <span onClick={() => window.open(k.document_image, '_blank')} style={{ fontSize: 12, color: 'var(--red)', cursor: 'pointer', textDecoration: 'underline', marginTop: 4, display: 'inline-block' }}>🔍 View Full Document</span>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {k.status === 'Pending' && (
+                              <>
+                                <button className="btn btn-success btn-sm" onClick={() => updateKycStatus(k.user_id, 'Approved')}>✓ Approve</button>
+                                <button className="btn btn-danger btn-sm" onClick={() => updateKycStatus(k.user_id, 'Rejected')}>✕ Reject</button>
+                              </>
+                            )}
+                            {k.status !== 'Pending' && (
+                              <button className="btn btn-secondary btn-sm" onClick={() => updateKycStatus(k.user_id, 'Pending')}>↺ Reset</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {section === 'broadcasts' && (
               <div className="admin-card">
                 <div className="admin-card-title">Send Broadcast Message</div>
@@ -2426,6 +2521,9 @@ export default function App() {
   const [theme, setTheme] = useState(() => LS.get('tesla_theme', 'dark') || 'dark');
   const [withdrawals, setWithdrawals] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [kyc, setKyc] = useState(null);
+  const [allKyc, setAllKyc] = useState([]);
 
   // Apply theme class to body
   useEffect(() => {
@@ -2447,13 +2545,15 @@ export default function App() {
       }
 
       // Load users, investments, orders, payments
-      const [usersData, investmentsData, ordersData, paymentsData, withdrawalsData, broadcastsData] = await Promise.all([
+      const session = LS.get('tesla_session', null);
+      const [usersData, investmentsData, ordersData, paymentsData, withdrawalsData, broadcastsData, allKycData] = await Promise.all([
         dbGetUsers(),
         dbGetInvestments(),
         dbGetOrders(),
         dbGetPayments(),
         dbGetWithdrawals(),
         dbGetBroadcasts(),
+        dbGetKyc(),
       ]);
       setUsers(usersData);
       setInvestments(investmentsData);
@@ -2461,6 +2561,15 @@ export default function App() {
       setPayments(paymentsData);
       setWithdrawals(withdrawalsData);
       setBroadcasts(broadcastsData);
+      setAllKyc(allKycData || []);
+      if (session?.id) {
+        const [notifData, kycData] = await Promise.all([
+          dbGetNotifications(session.id),
+          dbGetKyc(session.id),
+        ]);
+        setNotifications(notifData || []);
+        setKyc(kycData);
+      }
 
       setAppReady(true);
     };
@@ -2500,6 +2609,16 @@ export default function App() {
     setCurrentUser(user);
     setUsers(await dbGetUsers());
     LS.set('tesla_session', user);
+    // Welcome notification
+    const welcomeNotif = await dbInsertNotification({
+      user_id: user.id,
+      title: '🎉 Welcome to Tesla Invest!',
+      message: `Hi ${name}! Your account is ready. Deposit funds to start investing in Tesla vehicles.`,
+      type: 'info',
+      read: false,
+      created_at: new Date().toISOString(),
+    });
+    if (welcomeNotif) setNotifications([welcomeNotif]);
     return true;
   };
 
@@ -2514,13 +2633,35 @@ export default function App() {
   const addInvestment = async (inv) => {
     const record = { ...inv, user_id: currentUser?.id, date: new Date().toISOString().split('T')[0] };
     const saved = await dbInsertInvestment(record);
-    if (saved) setInvestments(prev => [saved, ...prev]);
+    if (saved) {
+      setInvestments(prev => [saved, ...prev]);
+      const notif = await dbInsertNotification({
+        user_id: currentUser.id,
+        title: '📈 Investment Confirmed',
+        message: `You have successfully invested $${Number(inv.amount).toLocaleString()} in ${inv.carName || inv.car_name || 'Portfolio Fund'} (${inv.plan || 'Standard'} plan). Your returns start growing today!`,
+        type: 'payment',
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+      if (notif) setNotifications(prev => [notif, ...prev]);
+    }
   };
 
   const addOrder = async (ord) => {
     const record = { ...ord, user_id: currentUser?.id, status: 'Pending', date: new Date().toISOString().split('T')[0] };
     const saved = await dbInsertOrder(record);
-    if (saved) setOrders(prev => [saved, ...prev]);
+    if (saved) {
+      setOrders(prev => [saved, ...prev]);
+      const notif = await dbInsertNotification({
+        user_id: currentUser.id,
+        title: '🚗 Order Placed',
+        message: `Your order for ${ord.carName || ord.car_name} has been placed successfully. We will contact you within 24-48 hours.`,
+        type: 'order',
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+      if (notif) setNotifications(prev => [notif, ...prev]);
+    }
   };
 
   const updateOrderStatus = async (id, status) => {
@@ -2542,7 +2683,18 @@ export default function App() {
   const addWithdrawal = async (w) => {
     const record = { ...w, user_id: currentUser?.id, user_name: currentUser?.name, user_email: currentUser?.email, status: 'Pending', date: new Date().toISOString().split('T')[0] };
     const saved = await dbInsertWithdrawal(record);
-    if (saved) setWithdrawals(prev => [saved, ...prev]);
+    if (saved) {
+      setWithdrawals(prev => [saved, ...prev]);
+      const notif = await dbInsertNotification({
+        user_id: currentUser.id,
+        title: '💸 Withdrawal Requested',
+        message: `Your withdrawal request of $${Number(w.amount).toLocaleString()} via ${w.method} has been submitted. Admin will process it within 24-48 hours.`,
+        type: 'withdrawal',
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+      if (notif) setNotifications(prev => [notif, ...prev]);
+    }
     return saved;
   };
 
@@ -2563,8 +2715,129 @@ export default function App() {
     if (ok) setBroadcasts(prev => prev.filter(b => b.id !== id));
   };
 
+  // ── NOTIFICATION HELPERS ─────────────────────────────────────────────────────
+  const pushNotification = async (userId, title, message, type = 'info') => {
+    if (!userId) return;
+    const n = { user_id: userId, title, message, type, read: false, created_at: new Date().toISOString() };
+    const saved = await dbInsertNotification(n);
+    if (saved && currentUser?.id === userId) {
+      setNotifications(prev => [saved, ...prev]);
+    }
+  };
+
+  const markNotificationRead = async (id) => {
+    await dbMarkNotificationRead(id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const markAllRead = async () => {
+    if (!currentUser) return;
+    await dbMarkAllNotificationsRead(currentUser.id);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const deleteNotification = async (id) => {
+    await dbDeleteNotification(id);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  // ── KYC ACTIONS ──────────────────────────────────────────────────────────────
+  const submitKyc = async (documentImage) => {
+    if (!currentUser) return null;
+    const record = { user_id: currentUser.id, user_name: currentUser.name, user_email: currentUser.email, document_image: documentImage, status: 'Pending', submitted_at: new Date().toISOString() };
+    const saved = await dbUpsertKyc(record);
+    if (saved) {
+      setKyc(saved);
+      setAllKyc(prev => {
+        const exists = prev.find(k => k.user_id === currentUser.id);
+        return exists ? prev.map(k => k.user_id === currentUser.id ? saved : k) : [saved, ...prev];
+      });
+      await pushNotification(currentUser.id, 'KYC Submitted', 'Your identity document has been submitted for review.', 'kyc');
+    }
+    return saved;
+  };
+
+  const updateKycStatus = async (userId, status) => {
+    const ok = await dbUpdateKycStatus(userId, status);
+    if (ok) {
+      setAllKyc(prev => prev.map(k => k.user_id === userId ? { ...k, status } : k));
+      if (currentUser?.id === userId) setKyc(prev => ({ ...prev, status }));
+      const icon = status === 'Approved' ? '✅' : '❌';
+      await pushNotification(userId, `KYC ${status}`, `${icon} Your identity verification has been ${status.toLowerCase()}.${status === 'Approved' ? ' You can now make withdrawals.' : ' Please resubmit with a clearer document.'}`, 'kyc');
+    }
+  };
+
+  // ── OVERRIDE updatePaymentStatus to push notification ─────────────────────
+  const updatePaymentStatusWithNotif = async (id, status) => {
+    const ok = await dbUpdatePaymentStatus(id, status);
+    if (ok) {
+      const pay = payments.find(p => p.id === id);
+      setPayments(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+      if (pay) {
+        const icon = status === 'Approved' ? '✅' : '❌';
+        const saved = await dbInsertNotification({
+          user_id: pay.user_id,
+          title: `Payment ${status}`,
+          message: `${icon} Your deposit of $${Number(pay.amount).toLocaleString()} has been ${status.toLowerCase()}.${status === 'Approved' ? ' Your balance has been updated.' : ''}`,
+          type: 'payment',
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+        if (saved && currentUser?.id === pay.user_id) setNotifications(prev => [saved, ...prev]);
+      }
+    }
+  };
+
+  // ── OVERRIDE updateWithdrawalStatus to push notification ──────────────────
+  const updateWithdrawalStatusWithNotif = async (id, status) => {
+    const ok = await dbUpdateWithdrawalStatus(id, status);
+    if (ok) {
+      const w = withdrawals.find(wd => wd.id === id);
+      setWithdrawals(prev => prev.map(wd => wd.id === id ? { ...wd, status } : wd));
+      if (w) {
+        const icon = status === 'Approved' ? '✅' : '❌';
+        const saved = await dbInsertNotification({
+          user_id: w.user_id,
+          title: `Withdrawal ${status}`,
+          message: `${icon} Your withdrawal of $${Number(w.amount).toLocaleString()} has been ${status.toLowerCase()}.`,
+          type: 'withdrawal',
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+        if (saved && currentUser?.id === w.user_id) setNotifications(prev => [saved, ...prev]);
+      }
+    }
+  };
+
+  // ── OVERRIDE updateOrderStatus to push notification ───────────────────────
+  const updateOrderStatusWithNotif = async (id, status) => {
+    const ok = await dbUpdateOrderStatus(id, status);
+    if (ok) {
+      const ord = orders.find(o => o.id === id);
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+      if (ord) {
+        const messages = {
+          Confirmed: '✅ Your order has been confirmed! We are preparing your Tesla.',
+          Processing: '🔧 Your order is being processed and prepared for shipment.',
+          Shipped: '🚚 Your Tesla has been shipped and is on its way!',
+          Delivered: '🎉 Your Tesla has been delivered! Enjoy your new car.',
+          Cancelled: '❌ Your order has been cancelled.',
+        };
+        const saved = await dbInsertNotification({
+          user_id: ord.user_id,
+          title: `Order ${status}`,
+          message: messages[status] || `Your order status has been updated to ${status}.`,
+          type: 'order',
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+        if (saved && currentUser?.id === ord.user_id) setNotifications(prev => [saved, ...prev]);
+      }
+    }
+  };
+
   const noNavPages = ['login', 'register', 'admin_login'];
-  const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard'];
+  const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard', 'kyc'];
 
   const setPage = (p) => { setPageRaw(p); LS.set('tesla_page', p); window.scrollTo(0, 0); };
 
@@ -2587,6 +2860,7 @@ export default function App() {
     if (page === 'register') return <RegisterPage setPage={setPage} />;
     if (page === 'dashboard') return <DashboardPage setPage={setPage} />;
     if (page === 'withdraw') return <WithdrawPage setPage={setPage} />;
+    if (page === 'kyc') return <KycPage setPage={setPage} />;
     if (page === 'admin_login') return <AdminLoginPage setPage={setPage} />;
     if (page === 'admin') return <AdminPanel setPage={setPage} />;
     if (page.startsWith('car_')) return <CarDetailPage carId={page.replace('car_', '')} setPage={setPage} />;
@@ -2594,7 +2868,7 @@ export default function App() {
   };
 
   return (
-    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus, addOrder, updateOrderStatus, addWithdrawal, updateWithdrawalStatus, addBroadcast, deleteBroadcast, showToast, appReady, theme, setTheme }}>
+    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme }}>
       <GlobalStyle theme={theme} />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
       {renderPage()}
@@ -2720,7 +2994,7 @@ const BroadcastBanner = () => {
 
 // ─── WITHDRAWAL PAGE ──────────────────────────────────────────────────────────
 const WithdrawPage = ({ setPage }) => {
-  const { currentUser, payments, investments, orders, withdrawals, addWithdrawal, showToast } = useApp();
+  const { currentUser, payments, investments, orders, withdrawals, kyc, addWithdrawal, showToast } = useApp();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('BTC');
   const [wallet, setWallet] = useState('');
@@ -2802,6 +3076,178 @@ const WithdrawPage = ({ setPage }) => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// ─── DAILY RETURNS HELPER ─────────────────────────────────────────────────────
+// Calculates live growing return based on days since investment
+const calcLiveReturn = (inv) => {
+  const rate = parseFloat(inv.return_rate || inv.returnRate || '12') / 100;
+  const annual = Number(inv.amount) * rate;
+  const daily = annual / 365;
+  const start = new Date(inv.date);
+  const today = new Date();
+  const days = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  const cappedDays = Math.min(days, 365);
+  return { earned: parseFloat((daily * cappedDays).toFixed(2)), days: cappedDays, daily: parseFloat(daily.toFixed(2)), annual, pct: Math.min(100, (cappedDays / 365) * 100).toFixed(1), matured: cappedDays >= 365 };
+};
+
+// ─── INVESTMENT PROGRESS BAR ──────────────────────────────────────────────────
+const InvestmentProgressBar = ({ inv, compact }) => {
+  const r = calcLiveReturn(inv);
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: compact ? 11 : 12, color: 'var(--muted)', marginBottom: 4 }}>
+        <span>Day {r.days} of 365</span>
+        <span style={{ color: r.matured ? 'var(--green)' : 'var(--gold)' }}>{r.matured ? '✅ Matured' : `${r.pct}%`}</span>
+      </div>
+      <div style={{ height: compact ? 4 : 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${r.pct}%`, background: r.matured ? 'var(--green)' : 'linear-gradient(90deg, var(--red), var(--gold))', borderRadius: 3, transition: 'width 0.5s' }} />
+      </div>
+      {!compact && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+          <span style={{ color: 'var(--muted)' }}>+${r.daily}/day</span>
+          <span style={{ color: 'var(--green)', fontWeight: 600 }}>+${r.earned.toLocaleString()} earned</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── NOTIFICATION CENTER ──────────────────────────────────────────────────────
+const NotificationCenter = ({ setPage }) => {
+  const { notifications, markNotificationRead, markAllRead, deleteNotification } = useApp();
+  const [open, setOpen] = useState(false);
+  const unread = notifications.filter(n => !n.read).length;
+
+  const typeIcon = (type) => ({ payment: '💳', withdrawal: '💸', order: '🚗', kyc: '🪪', info: 'ℹ️' }[type] || 'ℹ️');
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(!open)} style={{ background: 'transparent', border: '1px solid var(--border-light)', borderRadius: 20, padding: '6px 12px', cursor: 'pointer', color: 'var(--text)', fontSize: 18, position: 'relative', display: 'flex', alignItems: 'center' }}>
+        🔔
+        {unread > 0 && (
+          <span style={{ position: 'absolute', top: -4, right: -4, background: 'var(--red)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{unread > 9 ? '9+' : unread}</span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
+          <div style={{ position: 'absolute', right: 0, top: 44, width: 340, maxHeight: 480, overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 1000 }}>
+            <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700 }}>Notifications {unread > 0 && <span style={{ color: 'var(--red)', fontSize: 12 }}>({unread} new)</span>}</span>
+              {unread > 0 && <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 12, cursor: 'pointer' }}>Mark all read</button>}
+            </div>
+            {notifications.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>🔔 No notifications yet</div>
+            ) : notifications.map(n => (
+              <div key={n.id} onClick={() => markNotificationRead(n.id)} style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', background: n.read ? 'transparent' : 'rgba(227,25,55,0.05)', cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ fontSize: 20, flexShrink: 0 }}>{typeIcon(n.type)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: n.read ? 400 : 700, fontSize: 13, marginBottom: 2 }}>{n.title}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{n.message}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                </div>
+                <button onClick={e => { e.stopPropagation(); deleteNotification(n.id); }} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── KYC PAGE ─────────────────────────────────────────────────────────────────
+const KycPage = ({ setPage }) => {
+  const { currentUser, kyc, submitKyc, showToast } = useApp();
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  if (!currentUser) { setPage('login'); return null; }
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!preview) { showToast('Please select an ID document', 'error'); return; }
+    setLoading(true);
+    const saved = await submitKyc(preview);
+    setLoading(false);
+    if (saved) showToast('KYC submitted! Admin will review within 24hrs.', 'success');
+    else showToast('Submission failed. Please try again.', 'error');
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header"><h1>Identity Verification</h1><p>KYC is required to enable withdrawals</p></div>
+      <section className="section" style={{ paddingTop: 40 }}>
+        <div className="container" style={{ maxWidth: 600 }}>
+
+          {/* Status banner */}
+          {kyc && (
+            <div style={{ background: kyc.status === 'Approved' ? 'rgba(0,200,83,0.1)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${kyc.status === 'Approved' ? 'rgba(0,200,83,0.3)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.3)' : 'rgba(201,168,76,0.3)'}`, borderRadius: 12, padding: 20, marginBottom: 28, display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ fontSize: 32 }}>{kyc.status === 'Approved' ? '✅' : kyc.status === 'Rejected' ? '❌' : '⏳'}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>KYC {kyc.status}</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  {kyc.status === 'Approved' && 'Your identity has been verified. Withdrawals are enabled.'}
+                  {kyc.status === 'Pending' && 'Your document is under review. This usually takes 24 hours.'}
+                  {kyc.status === 'Rejected' && 'Your document was rejected. Please resubmit a clearer image.'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {(!kyc || kyc.status === 'Rejected') && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
+              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Upload ID Document</h3>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>Please upload a clear photo of a valid government-issued ID (passport, national ID, or driver's license).</p>
+
+              <input type="file" accept="image/*" id="kyc-doc" style={{ display: 'none' }} onChange={handleFile} />
+
+              <div onClick={() => document.getElementById('kyc-doc').click()} style={{ border: '2px dashed var(--border-light)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', marginBottom: 20, transition: 'border-color 0.2s' }}>
+                {preview ? (
+                  <img src={preview} alt="ID preview" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 8, objectFit: 'contain' }} />
+                ) : (
+                  <>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🪪</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Tap to choose your ID document</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>JPG, PNG supported · Max 5MB</div>
+                  </>
+                )}
+              </div>
+
+              {preview && (
+                <button className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} onClick={() => setPreview(null)}>Remove & choose again</button>
+              )}
+
+              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
+                ⚠ Your document is stored securely and only used for identity verification purposes.
+              </div>
+
+              <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !preview}>
+                {loading ? 'Submitting...' : 'Submit for Verification'}
+              </button>
+            </div>
+          )}
+
+          {kyc?.status === 'Approved' && (
+            <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+              <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Fully Verified</div>
+              <p style={{ color: 'var(--muted)', marginBottom: 24 }}>Your identity has been verified. You can now make withdrawals.</p>
+              <button className="btn btn-primary" onClick={() => setPage('withdraw')}>Go to Withdraw</button>
             </div>
           )}
         </div>

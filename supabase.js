@@ -227,3 +227,61 @@ export const dbDeleteBroadcast = async (id) => {
   if (error) { console.error('deleteBroadcast:', error); return false; }
   return true;
 };
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+
+export const dbGetNotifications = async (userId) => {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('getNotifications:', error); return []; }
+  return data;
+};
+
+export const dbInsertNotification = async (n) => {
+  const { data, error } = await supabase.from('notifications').insert([n]).select().single();
+  if (error) { console.error('insertNotification:', error); return null; }
+  return data;
+};
+
+export const dbMarkNotificationRead = async (id) => {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+  if (error) { console.error('markRead:', error); return false; }
+  return true;
+};
+
+export const dbMarkAllNotificationsRead = async (userId) => {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  if (error) { console.error('markAllRead:', error); return false; }
+  return true;
+};
+
+export const dbDeleteNotification = async (id) => {
+  const { error } = await supabase.from('notifications').delete().eq('id', id);
+  if (error) { console.error('deleteNotification:', error); return false; }
+  return true;
+};
+
+// ─── KYC ─────────────────────────────────────────────────────────────────────
+
+export const dbGetKyc = async (userId = null) => {
+  let query = supabase.from('kyc').select('*').order('submitted_at', { ascending: false });
+  if (userId) query = query.eq('user_id', userId);
+  const { data, error } = await query;
+  if (error) { console.error('getKyc:', error); return userId ? null : []; }
+  return userId ? (data?.[0] || null) : data;
+};
+
+export const dbUpsertKyc = async (kyc) => {
+  const { data, error } = await supabase.from('kyc').upsert([kyc], { onConflict: 'user_id' }).select().single();
+  if (error) { console.error('upsertKyc:', error); return null; }
+  return data;
+};
+
+export const dbUpdateKycStatus = async (userId, status) => {
+  const { error } = await supabase.from('kyc').update({ status }).eq('user_id', userId);
+  if (error) { console.error('updateKycStatus:', error); return false; }
+  return true;
+};
