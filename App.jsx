@@ -66,7 +66,6 @@ const GlobalStyle = () => (
       --text: #111111; --muted: #666; --white: #000000;
     }
     body { transition: background 0.3s, color 0.3s; }
-    }
     html { scroll-behavior: smooth; }
     body { background: var(--black); color: var(--text); font-family: 'Exo 2', sans-serif; min-height: 100vh; overflow-x: hidden; }
     ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--dark); } ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 3px; }
@@ -2878,7 +2877,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme }}>
-      <GlobalStyle theme={theme} />
+      <GlobalStyle />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
       {renderPage()}
       {!noFooterPages.includes(page) && appReady && <Footer setPage={setPage} />}
