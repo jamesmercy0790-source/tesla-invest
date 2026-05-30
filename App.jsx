@@ -668,7 +668,7 @@ const NotificationCenter = ({ setPage }) => {
 };
 
 // ─── KYC PAGE (MULTI-STEP) ────────────────────────────────────────────────────
-const ID_TYPES = ['Driver's License', 'Passport', 'National Identity Card'];
+const ID_TYPES = ["Driver's License", "Passport", "National Identity Card"];
 
 const KycPage = ({ setPage }) => {
   const { currentUser, kyc, submitKyc, showToast } = useApp();
@@ -719,7 +719,7 @@ const KycPage = ({ setPage }) => {
 
   const validateStep3 = () => {
     if (!frontPreview) { showToast('Upload the front of your ID', 'error'); return false; }
-    if (needsBack && !backPreview) { showToast('Upload the back of your Driver's License', 'error'); return false; }
+    if (needsBack && !backPreview) { showToast("Upload the back of your Driver's License", 'error'); return false; }
     return true;
   };
 
@@ -846,12 +846,12 @@ const KycPage = ({ setPage }) => {
                     <label className="form-label">ID Type *</label>
                     <select className="form-select" style={inputStyle} value={form.id_type} onChange={e => setForm({ ...form, id_type: e.target.value })}>
                       <option value="">Select ID type</option>
-                      {ID_TYPES.map(t => <option key={t} value={t}>{t === "Driver's License" ? "🪪 Driver's License" : t === 'Passport' ? '📕 Passport' : '🪪 National Identity Card'}</option>)}
+                      {ID_TYPES.map(t => <option key={t} value={t}>{t === "Driver's License" ? "🪪 Driver's License" : t === "Passport" ? "📕 Passport" : "🪪 National Identity Card"}</option>)}
                     </select>
                   </div>
                   {form.id_type && (
                     <div style={{ background: 'rgba(227,25,55,0.06)', border: '1px solid rgba(227,25,55,0.2)', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-                      {form.id_type === "Driver's License" && '🪪 You will need to upload both front and back of your Driver's License'}
+                      {form.id_type === "Driver's License" && "🪪 You will need to upload both front and back of your Driver's License"}
                       {form.id_type === 'Passport' && '📕 You will need to upload the photo page of your Passport'}
                       {form.id_type === 'National Identity Card' && '🪪 You will need to upload the front of your National ID Card'}
                     </div>
