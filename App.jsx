@@ -667,86 +667,258 @@ const NotificationCenter = ({ setPage }) => {
   );
 };
 
-// ─── KYC PAGE ─────────────────────────────────────────────────────────────────
+// ─── KYC PAGE (MULTI-STEP) ────────────────────────────────────────────────────
+const ID_TYPES = ['Driver's License', 'Passport', 'National Identity Card'];
+
 const KycPage = ({ setPage }) => {
   const { currentUser, kyc, submitKyc, showToast } = useApp();
-  const [preview, setPreview] = useState(null);
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  if (!currentUser) { setPage('login'); return null; }
-  if (kyc === undefined) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>;
+  const [form, setForm] = useState({
+    full_name: currentUser?.name || '',
+    dob: '',
+    phone: '',
+    address: '',
+    country: '',
+    id_type: '',
+    id_number: '',
+  });
+  const [frontPreview, setFrontPreview] = useState(null);
+  const [backPreview, setBackPreview] = useState(null);
 
-  const handleFile = (e) => {
-    const file = e.target.files[0];
+  if (!currentUser) { setPage('login'); return null; }
+  if (kyc === undefined) return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner" />
+    </div>
+  );
+
+  const needsBack = form.id_type === "Driver's License";
+
+  const readFile = (file, setter) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setPreview(ev.target.result);
+    reader.onload = ev => setter(ev.target.result);
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = async () => {
-    if (!preview) { showToast('Please select an ID document', 'error'); return; }
-    setLoading(true);
-    const saved = await submitKyc(preview);
-    setLoading(false);
-    if (saved) showToast('KYC submitted! Admin will review within 24hrs.', 'success');
-    else showToast('Submission failed. Please try again.', 'error');
+  const validateStep1 = () => {
+    if (!form.full_name.trim()) { showToast('Enter your full name', 'error'); return false; }
+    if (!form.dob) { showToast('Enter your date of birth', 'error'); return false; }
+    if (!form.phone.trim()) { showToast('Enter your phone number', 'error'); return false; }
+    if (!form.address.trim()) { showToast('Enter your address', 'error'); return false; }
+    if (!form.country.trim()) { showToast('Select your country', 'error'); return false; }
+    return true;
   };
+
+  const validateStep2 = () => {
+    if (!form.id_type) { showToast('Select an ID type', 'error'); return false; }
+    if (!form.id_number.trim()) { showToast('Enter your ID number', 'error'); return false; }
+    return true;
+  };
+
+  const validateStep3 = () => {
+    if (!frontPreview) { showToast('Upload the front of your ID', 'error'); return false; }
+    if (needsBack && !backPreview) { showToast('Upload the back of your Driver's License', 'error'); return false; }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateStep3()) return;
+    setLoading(true);
+    const saved = await submitKyc({
+      ...form,
+      document_front: frontPreview,
+      document_back: backPreview,
+      document_image: frontPreview,
+    });
+    setLoading(false);
+    if (saved) {
+      showToast('KYC submitted! Admin will review within 24hrs.', 'success');
+      setStep(4);
+    } else {
+      showToast('Submission failed. Please try again.', 'error');
+    }
+  };
+
+  // Step indicator
+  const StepBar = () => (
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 32, gap: 0 }}>
+      {['Personal Info', 'ID Details', 'Upload Docs'].map((label, i) => {
+        const s = i + 1;
+        const active = step === s;
+        const done = step > s;
+        return (
+          <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            {i < 2 && <div style={{ position: 'absolute', top: 14, left: '50%', right: '-50%', height: 2, background: done ? 'var(--green)' : 'var(--border)', zIndex: 0 }} />}
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? 'var(--green)' : active ? 'var(--red)' : 'var(--border)', color: done || active ? '#fff' : 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, zIndex: 1, position: 'relative' }}>
+              {done ? '✓' : s}
+            </div>
+            <div style={{ fontSize: 10, marginTop: 6, color: active ? 'var(--text)' : 'var(--muted)', textAlign: 'center', fontWeight: active ? 700 : 400 }}>{label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const inputStyle = { fontSize: 16, padding: '14px 16px' };
+  const F = (label, key, type = 'text', placeholder = '') => (
+    <div className="form-group">
+      <label className="form-label">{label}</label>
+      <input className="form-input" style={inputStyle} type={type} placeholder={placeholder}
+        value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} />
+    </div>
+  );
 
   return (
     <div className="page">
-      <div className="page-header"><h1>Identity Verification</h1><p>KYC is required to enable withdrawals</p></div>
+      <div className="page-header">
+        <h1>Identity Verification</h1>
+        <p>Complete KYC to enable withdrawals</p>
+      </div>
       <section className="section" style={{ paddingTop: 40 }}>
-        <div className="container" style={{ maxWidth: 600 }}>
+        <div className="container" style={{ maxWidth: 560 }}>
 
-          {/* Status banner */}
-          {kyc && (
-            <div style={{ background: kyc.status === 'Approved' ? 'rgba(0,200,83,0.1)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${kyc.status === 'Approved' ? 'rgba(0,200,83,0.3)' : kyc.status === 'Rejected' ? 'rgba(227,25,55,0.3)' : 'rgba(201,168,76,0.3)'}`, borderRadius: 12, padding: 20, marginBottom: 28, display: 'flex', gap: 14, alignItems: 'center' }}>
-              <div style={{ fontSize: 32 }}>{kyc.status === 'Approved' ? '✅' : kyc.status === 'Rejected' ? '❌' : '⏳'}</div>
+          {/* Status banner for existing KYC */}
+          {kyc && kyc.status !== 'Rejected' && step !== 4 && (
+            <div style={{ background: kyc.status === 'Approved' ? 'rgba(0,200,83,0.1)' : 'rgba(201,168,76,0.1)', border: `1px solid ${kyc.status === 'Approved' ? 'rgba(0,200,83,0.3)' : 'rgba(201,168,76,0.3)'}`, borderRadius: 12, padding: 20, marginBottom: 28, display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ fontSize: 32 }}>{kyc.status === 'Approved' ? '✅' : '⏳'}</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>KYC {kyc.status}</div>
                 <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {kyc.status === 'Approved' && 'Your identity has been verified. Withdrawals are enabled.'}
-                  {kyc.status === 'Pending' && 'Your document is under review. This usually takes 24 hours.'}
-                  {kyc.status === 'Rejected' && 'Your document was rejected. Please resubmit a clearer image.'}
+                  {kyc.status === 'Approved' ? 'Your identity is verified. Withdrawals are enabled.' : 'Your documents are under review. Usually takes 24 hours.'}
                 </div>
               </div>
             </div>
           )}
 
-          {(!kyc || kyc.status === 'Rejected') && (
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 32 }}>
-              <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Upload ID Document</h3>
-              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.7 }}>Please upload a clear photo of a valid government-issued ID (passport, national ID, or driver's license).</p>
-
-              <input type="file" accept="image/*" id="kyc-doc" style={{ display: 'none' }} onChange={handleFile} />
-
-              <div onClick={() => document.getElementById('kyc-doc').click()} style={{ border: '2px dashed var(--border-light)', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', marginBottom: 20, transition: 'border-color 0.2s' }}>
-                {preview ? (
-                  <img src={preview} alt="ID preview" style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 8, objectFit: 'contain' }} />
-                ) : (
-                  <>
-                    <div style={{ fontSize: 40, marginBottom: 12 }}>🪪</div>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Tap to choose your ID document</div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)' }}>JPG, PNG supported · Max 5MB</div>
-                  </>
-                )}
-              </div>
-
-              {preview && (
-                <button className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} onClick={() => setPreview(null)}>Remove & choose again</button>
-              )}
-
-              <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
-                ⚠ Your document is stored securely and only used for identity verification purposes.
-              </div>
-
-              <button className="btn btn-primary btn-full" onClick={handleSubmit} disabled={loading || !preview}>
-                {loading ? 'Submitting...' : 'Submit for Verification'}
-              </button>
+          {/* Success screen */}
+          {step === 4 && (
+            <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+              <div style={{ fontSize: 60, marginBottom: 16 }}>🎉</div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>KYC Submitted!</div>
+              <p style={{ color: 'var(--muted)', marginBottom: 28, lineHeight: 1.7 }}>Your identity documents have been submitted successfully. Admin will review and approve within 24 hours. You'll receive a notification once approved.</p>
+              <button className="btn btn-primary" style={{ marginBottom: 12 }} onClick={() => setPage('dashboard')}>Go to Dashboard</button>
             </div>
           )}
 
-          {kyc?.status === 'Approved' && (
+          {/* Form steps - only show if not approved and not success */}
+          {step !== 4 && (!kyc || kyc.status === 'Rejected') && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28 }}>
+              <StepBar />
+
+              {/* STEP 1 — Personal Information */}
+              {step === 1 && (
+                <>
+                  <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Personal Information</h3>
+                  {F('Full Name *', 'full_name', 'text', 'As shown on your ID')}
+                  {F('Date of Birth *', 'dob', 'date')}
+                  {F('Phone Number *', 'phone', 'tel', '+1 234 567 8900')}
+                  {F('Home Address *', 'address', 'text', 'Street, City, State')}
+                  <div className="form-group">
+                    <label className="form-label">Country *</label>
+                    <select className="form-select" style={inputStyle} value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}>
+                      <option value="">Select country</option>
+                      <option value="US">🇺🇸 United States</option>
+                      <option value="GB">🇬🇧 United Kingdom</option>
+                      <option value="NG">🇳🇬 Nigeria</option>
+                      <option value="GH">🇬🇭 Ghana</option>
+                      <option value="CA">🇨🇦 Canada</option>
+                      <option value="AU">🇦🇺 Australia</option>
+                      <option value="DE">🇩🇪 Germany</option>
+                      <option value="FR">🇫🇷 France</option>
+                      <option value="IN">🇮🇳 India</option>
+                      <option value="ZA">🇿🇦 South Africa</option>
+                      <option value="Other">🌍 Other</option>
+                    </select>
+                  </div>
+                  <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={() => validateStep1() && setStep(2)}>
+                    Continue → ID Details
+                  </button>
+                </>
+              )}
+
+              {/* STEP 2 — ID Details */}
+              {step === 2 && (
+                <>
+                  <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>ID Document Details</h3>
+                  <div className="form-group">
+                    <label className="form-label">ID Type *</label>
+                    <select className="form-select" style={inputStyle} value={form.id_type} onChange={e => setForm({ ...form, id_type: e.target.value })}>
+                      <option value="">Select ID type</option>
+                      {ID_TYPES.map(t => <option key={t} value={t}>{t === "Driver's License" ? "🪪 Driver's License" : t === 'Passport' ? '📕 Passport' : '🪪 National Identity Card'}</option>)}
+                    </select>
+                  </div>
+                  {form.id_type && (
+                    <div style={{ background: 'rgba(227,25,55,0.06)', border: '1px solid rgba(227,25,55,0.2)', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                      {form.id_type === "Driver's License" && '🪪 You will need to upload both front and back of your Driver's License'}
+                      {form.id_type === 'Passport' && '📕 You will need to upload the photo page of your Passport'}
+                      {form.id_type === 'National Identity Card' && '🪪 You will need to upload the front of your National ID Card'}
+                    </div>
+                  )}
+                  {F('ID / Document Number *', 'id_number', 'text', 'e.g. DL1234567 / P12345678')}
+                  <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setStep(1)}>← Back</button>
+                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => validateStep2() && setStep(3)}>Continue → Upload</button>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 3 — Upload Documents */}
+              {step === 3 && (
+                <>
+                  <h3 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Upload Documents</h3>
+                  <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 20, lineHeight: 1.6 }}>
+                    {form.id_type} · #{form.id_number} · Ensure documents are clear, well-lit and not blurry.
+                  </p>
+
+                  {/* Front upload */}
+                  <div className="form-group">
+                    <label className="form-label">{form.id_type === 'Passport' ? 'Photo Page *' : 'Front of Document *'}</label>
+                    <input type="file" accept="image/*" id="kyc-front" style={{ display: 'none' }}
+                      onChange={e => readFile(e.target.files[0], setFrontPreview)} />
+                    <div onClick={() => document.getElementById('kyc-front').click()}
+                      style={{ border: `2px dashed ${frontPreview ? 'var(--green)' : 'var(--border-light)'}`, borderRadius: 12, padding: 24, textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s', marginBottom: 8 }}>
+                      {frontPreview
+                        ? <img src={frontPreview} alt="Front" style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'contain' }} />
+                        : <><div style={{ fontSize: 32, marginBottom: 8 }}>📷</div><div style={{ fontSize: 14, fontWeight: 600 }}>Tap to upload front</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>JPG or PNG · Clear photo</div></>}
+                    </div>
+                    {frontPreview && <button className="btn btn-secondary btn-sm" onClick={() => setFrontPreview(null)}>Remove</button>}
+                  </div>
+
+                  {/* Back upload — only for Driver's License */}
+                  {needsBack && (
+                    <div className="form-group">
+                      <label className="form-label">Back of Document *</label>
+                      <input type="file" accept="image/*" id="kyc-back" style={{ display: 'none' }}
+                        onChange={e => readFile(e.target.files[0], setBackPreview)} />
+                      <div onClick={() => document.getElementById('kyc-back').click()}
+                        style={{ border: `2px dashed ${backPreview ? 'var(--green)' : 'var(--border-light)'}`, borderRadius: 12, padding: 24, textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s', marginBottom: 8 }}>
+                        {backPreview
+                          ? <img src={backPreview} alt="Back" style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'contain' }} />
+                          : <><div style={{ fontSize: 32, marginBottom: 8 }}>📷</div><div style={{ fontSize: 14, fontWeight: 600 }}>Tap to upload back</div><div style={{ fontSize: 12, color: 'var(--muted)' }}>JPG or PNG · Clear photo</div></>}
+                      </div>
+                      {backPreview && <button className="btn btn-secondary btn-sm" onClick={() => setBackPreview(null)}>Remove</button>}
+                    </div>
+                  )}
+
+                  <div style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.25)', borderRadius: 10, padding: 14, marginBottom: 20, fontSize: 13, color: 'var(--gold)', lineHeight: 1.6 }}>
+                    ⚠ Documents are stored securely and only used for identity verification.
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setStep(2)}>← Back</button>
+                    <button className="btn btn-primary" style={{ flex: 1 }} disabled={loading} onClick={handleSubmit}>
+                      {loading ? 'Submitting...' : 'Submit KYC ✓'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Approved state */}
+          {kyc?.status === 'Approved' && step !== 4 && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Fully Verified</div>
@@ -761,7 +933,6 @@ const KycPage = ({ setPage }) => {
 };
 
 
-// ─── NAVBAR ──────────────────────────────────────────────────────────────────
 const Navbar = ({ page, setPage }) => {
   const { currentUser, logout } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -3159,9 +3330,16 @@ export default function App() {
   };
 
   // ── KYC ACTIONS ──────────────────────────────────────────────────────────────
-  const submitKyc = async (documentImage) => {
+  const submitKyc = async (kycData) => {
     if (!currentUser) return null;
-    const record = { user_id: currentUser.id, user_name: currentUser.name, user_email: currentUser.email, document_image: documentImage, status: 'Pending', submitted_at: new Date().toISOString() };
+    const record = {
+      user_id: currentUser.id,
+      user_name: currentUser.name,
+      user_email: currentUser.email,
+      ...kycData,
+      status: 'Pending',
+      submitted_at: new Date().toISOString(),
+    };
     const saved = await dbUpsertKyc(record);
     if (saved) {
       setKyc(saved);

@@ -282,7 +282,24 @@ export const dbGetKyc = async (userId = null) => {
 };
 
 export const dbUpsertKyc = async (kyc) => {
-  const { data, error } = await supabase.from('kyc').upsert([kyc], { onConflict: 'user_id' }).select().single();
+  const record = {
+    user_id:        kyc.user_id,
+    user_name:      kyc.user_name || null,
+    user_email:     kyc.user_email || null,
+    full_name:      kyc.full_name || null,
+    dob:            kyc.dob || null,
+    phone:          kyc.phone || null,
+    address:        kyc.address || null,
+    country:        kyc.country || null,
+    id_type:        kyc.id_type || null,
+    id_number:      kyc.id_number || null,
+    document_front: kyc.document_front || kyc.document_image || null,
+    document_back:  kyc.document_back || null,
+    document_image: kyc.document_front || kyc.document_image || null,
+    status:         kyc.status || 'Pending',
+    submitted_at:   kyc.submitted_at || new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('kyc').upsert([record], { onConflict: 'user_id' }).select().single();
   if (error) { console.error('upsertKyc:', error); return null; }
   return data;
 };
