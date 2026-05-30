@@ -477,6 +477,32 @@ const WithdrawPage = ({ setPage }) => {
   const [wallet, setWallet] = useState('');
   const [loading, setLoading] = useState(false);
   if (!currentUser) { setPage('login'); return null; }
+  // KYC check - show prompt if not approved yet
+  if (kyc === null || (kyc && kyc.status !== 'Approved')) {
+    const isPending = kyc && kyc.status === 'Pending';
+    const isRejected = kyc && kyc.status === 'Rejected';
+    return (
+      <div className="page">
+        <div className="page-header"><h1>Withdrawal</h1><p>Identity verification required</p></div>
+        <section className="section" style={{ paddingTop: 40 }}>
+          <div className="container" style={{ maxWidth: 500 }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 40, textAlign: 'center' }}>
+              <div style={{ fontSize: 50, marginBottom: 16 }}>{isPending ? '⏳' : isRejected ? '❌' : '🪪'}</div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>KYC Required</div>
+              <p style={{ color: 'var(--muted)', marginBottom: 24, lineHeight: 1.7 }}>
+                {isPending ? 'Your document is under review. Withdrawals will be enabled once approved (usually 24hrs).'
+                  : isRejected ? 'Your KYC was rejected. Please resubmit a clearer document to enable withdrawals.'
+                  : 'Please verify your identity before making withdrawals.'}
+              </p>
+              {!isPending && <button className="btn btn-primary" style={{ marginBottom: 12 }} onClick={() => setPage('kyc')}>Complete KYC Verification</button>}
+              <br />
+              <button className="btn btn-secondary btn-sm" onClick={() => setPage('dashboard')}>Back to Dashboard</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
   const totalDeposited = payments.filter(p => p.user_id === currentUser.id && p.status === 'Approved').reduce((s, p) => s + Number(p.amount), 0);
   const totalInvested = investments.filter(i => i.user_id === currentUser.id).reduce((s, i) => s + Number(i.amount), 0);
   const totalOrdered = orders.filter(o => o.user_id === currentUser.id && o.status !== 'Cancelled').reduce((s, o) => s + Number(o.car_price || 0), 0);
@@ -647,6 +673,7 @@ const KycPage = ({ setPage }) => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   if (!currentUser) { setPage('login'); return null; }
+  if (kyc === undefined) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>;
 
   const handleFile = (e) => {
     const file = e.target.files[0];
@@ -2133,30 +2160,12 @@ const RegisterPage = ({ setPage }) => {
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const DashboardPage = ({ setPage }) => {
-  const { currentUser, investments, payments, orders, withdrawals, logout } = useApp();
+  const { currentUser, investments, payments, orders, withdrawals, kyc, notifications, logout } = useApp();
   const [tab, setTab] = useState('overview');
   const { appReady } = useApp();
   if (!appReady) return null;
   if (!currentUser) { setPage('login'); return null; }
-  // KYC check — block withdrawals if not approved
-  if (!kyc || kyc.status !== 'Approved') return (
-    <div className="page">
-      <div className="page-header"><h1>Withdrawal</h1><p>Verify your identity to withdraw</p></div>
-      <section className="section" style={{ paddingTop: 40 }}>
-        <div className="container" style={{ maxWidth: 500 }}>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 50, marginBottom: 16 }}>🪪</div>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>KYC Required</div>
-            <p style={{ color: 'var(--muted)', marginBottom: 12, lineHeight: 1.7 }}>
-              {!kyc ? 'You need to verify your identity before making withdrawals.' : kyc.status === 'Pending' ? '⏳ Your KYC is under review. Withdrawals will be enabled once approved.' : '❌ Your KYC was rejected. Please resubmit a clearer document.'}
-            </p>
-            {kyc?.status !== 'Pending' && <button className="btn btn-primary" onClick={() => setPage('kyc')}>Complete KYC Verification</button>}
-            {kyc?.status === 'Pending' && <button className="btn btn-secondary" onClick={() => setPage('dashboard')}>Back to Dashboard</button>}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
+
   const userInvestments = investments.filter(i => i.user_id === currentUser.id);
   const totalInvested = userInvestments.reduce((s, i) => s + Number(i.amount), 0);
   const totalReturns = userInvestments.reduce((s, i) => s + Number(i.returns), 0);
@@ -2384,7 +2393,7 @@ const AdminLoginPage = ({ setPage }) => {
 
 // ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
 const AdminPanel = ({ setPage }) => {
-  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, withdrawals, allKyc, broadcasts, updatePaymentStatus, updateOrderStatus, updateWithdrawalStatus, updateKycStatus, addBroadcast, deleteBroadcast, showToast, setAdminLoggedIn } = useApp();
+  const { adminLoggedIn, cars, setCars, users, investments, payments, orders, withdrawals, allKyc, broadcasts, updatePaymentStatus, updateOrderStatus, updateWithdrawalStatus, updateKycStatus, addBroadcast, deleteBroadcast, showToast, setAdminLoggedIn, notifications } = useApp();
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [section, setSection] = useState('overview');
@@ -2903,8 +2912,9 @@ export default function App() {
   const [page, setPageRaw] = useState(() => {
     const session = LS.get('tesla_session', null);
     const savedPage = LS.get('tesla_page', 'home') || 'home';
-    // If logged in and saved page is home (or nothing), go to dashboard
-    if (session && savedPage === 'home') return 'dashboard';
+    if (!session) return 'home';
+    // Logged-in users: redirect home to dashboard
+    if (savedPage === 'home') return 'dashboard';
     return savedPage;
   });
   const [toast, setToast] = useState({ msg: '', type: 'success' });
