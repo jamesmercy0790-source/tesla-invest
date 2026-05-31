@@ -110,19 +110,20 @@ export const dbGetOrders = async (userId = null) => {
 
 export const dbInsertOrder = async (ord) => {
   const record = {
-    user_id:   ord.user_id,
-    car_name:  ord.carName || ord.car_name || null,
-    car_id:    ord.carId   || ord.car_id   || null,
-    car_price: ord.carPrice || ord.car_price || ord.price || null,
-    price:     ord.price   || null,
-    color:     ord.color   || null,
-    full_name: ord.fullName || ord.full_name || null,
-    email:     ord.email   || null,
-    phone:     ord.phone   || null,
-    address:   ord.address || null,
-    notes:     ord.notes   || null,
-    status:    ord.status  || 'Pending',
-    date:      ord.date    || new Date().toISOString().split('T')[0],
+    user_id:     ord.user_id,
+    car_name:    ord.carName || ord.car_name || null,
+    car_id:      ord.carId   || ord.car_id   || null,
+    car_price:   ord.carPrice || ord.car_price || ord.price || null,
+    price:       ord.price   || null,
+    color:       ord.color   || null,
+    full_name:   ord.fullName || ord.full_name || null,
+    email:       ord.email   || null,
+    phone:       ord.phone   || null,
+    address:     ord.address || null,
+    notes:       ord.notes   || null,
+    tracking_id: ord.tracking_id || null,
+    status:      ord.status  || 'Pending',
+    date:        ord.date    || new Date().toISOString().split('T')[0],
   };
   const { data, error } = await supabase.from('orders').insert([record]).select().single();
   if (error) { console.error('insertOrder:', error); return null; }

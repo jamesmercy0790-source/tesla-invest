@@ -35,6 +35,13 @@ class ErrorBoundary extends React.Component {
 const AppContext = createContext();
 const useApp = () => useContext(AppContext);
 
+// ─── TRACKING ID GENERATOR ───────────────────────────────────────────────────
+const generateTrackingId = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const seg = n => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `TLX-${seg(4)}-${seg(4)}`;
+};
+
 // ─── SESSION HELPERS (keep only for session token, no data) ─────────────────
 const LS = {
   get: (k, fallback) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
@@ -448,23 +455,29 @@ const OrderTracker = ({ order }) => {
 
 // ─── BROADCAST BANNER ─────────────────────────────────────────────────────────
 const BroadcastBanner = () => {
-  const { broadcasts } = useApp();
+  const { broadcasts, currentUser } = useApp();
   const [dismissed, setDismissed] = useState(() => LS.get('dismissed_broadcasts', []));
+
+  // When new broadcasts arrive that aren't dismissed, show them
   const active = broadcasts.filter(b => !dismissed.includes(b.id));
-  if (active.length === 0) return null;
+
+  // Only show to logged-in users
+  if (!currentUser || active.length === 0) return null;
   const latest = active[0];
+
   const dismiss = () => {
     const newDismissed = [...dismissed, latest.id];
     setDismissed(newDismissed);
     LS.set('dismissed_broadcasts', newDismissed);
   };
+
   return (
-    <div style={{ background: 'linear-gradient(90deg, rgba(227,25,55,0.15), rgba(201,168,76,0.1))', borderBottom: '1px solid rgba(227,25,55,0.3)', padding: '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'fixed', top: 70, left: 0, right: 0, zIndex: 998 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text)', flex: 1 }}>
-        <span style={{ fontSize: 16 }}>📢</span>
-        <span>{latest.message}</span>
+    <div style={{ background: 'linear-gradient(90deg, rgba(227,25,55,0.2), rgba(201,168,76,0.15))', borderBottom: '2px solid rgba(227,25,55,0.4)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, position: 'fixed', top: 70, left: 0, right: 0, zIndex: 998 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--text)', flex: 1 }}>
+        <span style={{ fontSize: 18 }}>📢</span>
+        <span style={{ fontWeight: 500 }}>{latest.message}</span>
       </div>
-      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 18, padding: '0 4px' }}>✕</button>
+      <button onClick={dismiss} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 20, padding: '0 4px', lineHeight: 1 }}>✕</button>
     </div>
   );
 };
@@ -490,7 +503,7 @@ const WithdrawPage = ({ setPage }) => {
               <div style={{ fontSize: 50, marginBottom: 16 }}>{isPending ? '⏳' : isRejected ? '❌' : '🪪'}</div>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>KYC Required</div>
               <p style={{ color: 'var(--muted)', marginBottom: 24, lineHeight: 1.7 }}>
-                {isPending ? 'Your document is under review. Withdrawals will be enabled once approved (usually 24hrs).'
+                {isPending ? 'Your document is under review. Review may take up to 72 hours.'
                   : isRejected ? 'Your KYC was rejected. Please resubmit a clearer document to enable withdrawals.'
                   : 'Please verify your identity before making withdrawals.'}
               </p>
@@ -797,7 +810,7 @@ const KycPage = ({ setPage }) => {
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 60, marginBottom: 16 }}>🎉</div>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, marginBottom: 12 }}>KYC Submitted!</div>
-              <p style={{ color: 'var(--muted)', marginBottom: 28, lineHeight: 1.7 }}>Your identity documents have been submitted successfully. Admin will review and approve within 24 hours. You'll receive a notification once approved.</p>
+              <p style={{ color: 'var(--muted)', marginBottom: 28, lineHeight: 1.7 }}>Your identity documents have been submitted successfully. Review may take up to 72 hours. You will receive a notification once approved.</p>
               <button className="btn btn-primary" style={{ marginBottom: 12 }} onClick={() => setPage('dashboard')}>Go to Dashboard</button>
             </div>
           )}
@@ -819,17 +832,7 @@ const KycPage = ({ setPage }) => {
                     <label className="form-label">Country *</label>
                     <select className="form-select" style={inputStyle} value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}>
                       <option value="">Select country</option>
-                      <option value="US">🇺🇸 United States</option>
-                      <option value="GB">🇬🇧 United Kingdom</option>
-                      <option value="NG">🇳🇬 Nigeria</option>
-                      <option value="GH">🇬🇭 Ghana</option>
-                      <option value="CA">🇨🇦 Canada</option>
-                      <option value="AU">🇦🇺 Australia</option>
-                      <option value="DE">🇩🇪 Germany</option>
-                      <option value="FR">🇫🇷 France</option>
-                      <option value="IN">🇮🇳 India</option>
-                      <option value="ZA">🇿🇦 South Africa</option>
-                      <option value="Other">🌍 Other</option>
+                      {["Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia","Bosnia and Herzegovina","Botswana","Brazil","Brunei","Bulgaria","Burkina Faso","Burundi","Cabo Verde","Cambodia","Cameroon","Canada","Central African Republic","Chad","Chile","China","Colombia","Comoros","Congo","Costa Rica","Croatia","Cuba","Cyprus","Czech Republic","Denmark","Djibouti","Dominica","Dominican Republic","Ecuador","Egypt","El Salvador","Equatorial Guinea","Eritrea","Estonia","Eswatini","Ethiopia","Fiji","Finland","France","Gabon","Gambia","Georgia","Germany","Ghana","Greece","Grenada","Guatemala","Guinea","Guinea-Bissau","Guyana","Haiti","Honduras","Hungary","Iceland","India","Indonesia","Iran","Iraq","Ireland","Israel","Italy","Ivory Coast","Jamaica","Japan","Jordan","Kazakhstan","Kenya","Kiribati","Kuwait","Kyrgyzstan","Laos","Latvia","Lebanon","Lesotho","Liberia","Libya","Liechtenstein","Lithuania","Luxembourg","Madagascar","Malawi","Malaysia","Maldives","Mali","Malta","Marshall Islands","Mauritania","Mauritius","Mexico","Micronesia","Moldova","Monaco","Mongolia","Montenegro","Morocco","Mozambique","Myanmar","Namibia","Nauru","Nepal","Netherlands","New Zealand","Nicaragua","Niger","Nigeria","North Korea","North Macedonia","Norway","Oman","Pakistan","Palau","Palestine","Panama","Papua New Guinea","Paraguay","Peru","Philippines","Poland","Portugal","Qatar","Romania","Russia","Rwanda","Saint Kitts and Nevis","Saint Lucia","Saint Vincent and the Grenadines","Samoa","San Marino","Sao Tome and Principe","Saudi Arabia","Senegal","Serbia","Seychelles","Sierra Leone","Singapore","Slovakia","Slovenia","Solomon Islands","Somalia","South Africa","South Korea","South Sudan","Spain","Sri Lanka","Sudan","Suriname","Sweden","Switzerland","Syria","Taiwan","Tajikistan","Tanzania","Thailand","Timor-Leste","Togo","Tonga","Trinidad and Tobago","Tunisia","Turkey","Turkmenistan","Tuvalu","Uganda","Ukraine","United Arab Emirates","United Kingdom","United States","Uruguay","Uzbekistan","Vanuatu","Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={() => validateStep1() && setStep(2)}>
@@ -2258,6 +2261,32 @@ const PaymentPage = ({ setPage }) => {
   );
 };
 
+// ─── PASSWORD INPUT WITH EYE TOGGLE ────────────────────────────────────────────
+const PasswordInput = ({ value, onChange, placeholder, onKeyDown, style }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="form-input"
+        type={show ? 'text' : 'password'}
+        placeholder={placeholder || '••••••••'}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        style={{ paddingRight: 44, ...(style || {}) }}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, padding: 4, lineHeight: 1 }}
+      >
+        {show ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+};
+
+
 // ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
 const LoginPage = ({ setPage }) => {
   const { login, showToast } = useApp();
@@ -2282,7 +2311,7 @@ const LoginPage = ({ setPage }) => {
         <div style={{ marginTop: 32 }}>
           {err && <div className="form-error" style={{ marginBottom: 16, textAlign: 'center' }}>{err}</div>}
           <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" placeholder="your@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
-          <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
+          <div className="form-group"><label className="form-label">Password</label><PasswordInput value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
           <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={submit} disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
           <div className="auth-footer" style={{ marginTop: 16 }}>Admin? <span onClick={() => setPage('admin_login')}>Admin Login →</span></div>
           <div className="auth-footer">Don't have an account? <span onClick={() => setPage('register')}>Create one</span></div>
@@ -2319,8 +2348,8 @@ const RegisterPage = ({ setPage }) => {
           {err && <div className="form-error" style={{ marginBottom: 16, textAlign: 'center' }}>{err}</div>}
           <div className="form-group"><label className="form-label">Full Name</label><input className="form-input" placeholder="John Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
           <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" placeholder="your@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-          <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" placeholder="Min 6 characters" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></div>
-          <div className="form-group"><label className="form-label">Confirm Password</label><input className="form-input" type="password" placeholder="Repeat password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
+          <div className="form-group"><label className="form-label">Password</label><PasswordInput placeholder="Min 6 characters" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></div>
+          <div className="form-group"><label className="form-label">Confirm Password</label><PasswordInput placeholder="Repeat password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
           <button className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={submit} disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</button>
           <div className="auth-footer">Already have an account? <span onClick={() => setPage('login')}>Sign in</span></div>
         </div>
@@ -2467,7 +2496,8 @@ const DashboardPage = ({ setPage }) => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
                       <div>
                         <div style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{ord.car_name || ord.carName}</div>
-                        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Ordered {ord.date} · ${Number(ord.car_price || ord.price || 0).toLocaleString()}</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4 }}>Ordered {ord.date} · ${Number(ord.car_price || ord.price || 0).toLocaleString()}</div>
+                        {ord.tracking_id && <div style={{ fontSize: 12, fontFamily: 'monospace', background: 'rgba(227,25,55,0.1)', border: '1px solid rgba(227,25,55,0.2)', borderRadius: 6, padding: '3px 8px', display: 'inline-block', color: 'var(--red)', fontWeight: 700 }}>🔍 {ord.tracking_id}</div>}
                       </div>
                       <span className={`badge ${ord.status === 'Delivered' ? 'badge-green' : ord.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`}>{ord.status}</span>
                     </div>
@@ -2553,7 +2583,7 @@ const AdminLoginPage = ({ setPage }) => {
           {err && <div className="form-error" style={{ marginBottom: 16, textAlign: 'center' }}>{err}</div>}
 
           <div className="form-group"><label className="form-label">Username</label><input className="form-input" placeholder="admin" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} /></div>
-          <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
+          <div className="form-group"><label className="form-label">Password</label><PasswordInput value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
           <button className="btn btn-primary btn-full" onClick={submit}>Access Admin Panel</button>
           <div className="auth-footer" style={{ marginTop: 16 }}><span onClick={() => setPage('login')}>← Back to Login</span></div>
         </div>
@@ -3110,6 +3140,27 @@ export default function App() {
     LS.set('tesla_theme', theme);
   }, [theme]);
 
+  // Handle browser/phone back button
+  useEffect(() => {
+    // Push initial state
+    window.history.pushState({ page }, '', window.location.pathname);
+    const handlePop = () => goBack();
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  // Auto-logout after 1 hour
+  useEffect(() => {
+    const check = setInterval(() => {
+      const loginTime = LS.get('tesla_login_time', null);
+      if ((currentUser || adminLoggedIn) && loginTime) {
+        const elapsed = Date.now() - loginTime;
+        if (elapsed > 60 * 60 * 1000) logout(true);
+      }
+    }, 60000); // check every minute
+    return () => clearInterval(check);
+  }, [currentUser, adminLoggedIn]);
+
   // ── LOAD ALL DATA FROM SUPABASE ON MOUNT ────────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -3187,6 +3238,7 @@ export default function App() {
     if (error) return error;
     setCurrentUser(user);
     LS.set('tesla_session', user);
+    LS.set('tesla_login_time', Date.now());
     return true;
   };
 
@@ -3207,15 +3259,19 @@ export default function App() {
       created_at: new Date().toISOString(),
     });
     if (welcomeNotif) setNotifications([welcomeNotif]);
+    LS.set('tesla_login_time', Date.now());
     return true;
   };
 
   // ── LOGOUT ──────────────────────────────────────────────────────────────────
-  const logout = () => {
+  const logout = (auto = false) => {
     setCurrentUser(null);
+    setAdminLoggedIn(false);
     localStorage.removeItem('tesla_session');
     localStorage.removeItem('tesla_page');
+    localStorage.removeItem('tesla_login_time');
     setPageRaw('home');
+    if (auto) showToast('Session expired. Please log in again.', 'error');
   };
 
   const addInvestment = async (inv) => {
@@ -3236,14 +3292,15 @@ export default function App() {
   };
 
   const addOrder = async (ord) => {
-    const record = { ...ord, user_id: currentUser?.id, status: 'Pending', date: new Date().toISOString().split('T')[0] };
+    const tracking_id = generateTrackingId();
+    const record = { ...ord, user_id: currentUser?.id, tracking_id, status: 'Pending', date: new Date().toISOString().split('T')[0] };
     const saved = await dbInsertOrder(record);
     if (saved) {
       setOrders(prev => [saved, ...prev]);
       const notif = await dbInsertNotification({
         user_id: currentUser.id,
         title: '🚗 Order Placed',
-        message: `Your order for ${ord.carName || ord.car_name} has been placed successfully. We will contact you within 24-48 hours.`,
+        message: `Your order for ${ord.carName || ord.car_name} has been placed. Tracking ID: ${tracking_id}. We will contact you within 24-48 hours.`,
         type: 'order',
         read: false,
         created_at: new Date().toISOString(),
@@ -3347,7 +3404,7 @@ export default function App() {
         const exists = prev.find(k => k.user_id === currentUser.id);
         return exists ? prev.map(k => k.user_id === currentUser.id ? saved : k) : [saved, ...prev];
       });
-      await pushNotification(currentUser.id, 'KYC Submitted', 'Your identity document has been submitted for review.', 'kyc');
+      await pushNotification(currentUser.id, 'KYC Submitted', 'Your identity documents have been submitted. Review may take up to 72 hours.', 'kyc');
     }
     return saved;
   };
@@ -3434,7 +3491,24 @@ export default function App() {
   const noNavPages = ['login', 'register', 'admin_login'];
   const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard', 'kyc'];
 
-  const setPage = (p) => { setPageRaw(p); LS.set('tesla_page', p); window.scrollTo(0, 0); };
+  const [pageHistory, setPageHistory] = useState([]);
+  const setPage = (p) => {
+    setPageHistory(prev => [...prev.slice(-19), page]);
+    setPageRaw(p);
+    LS.set('tesla_page', p);
+    window.scrollTo(0, 0);
+    // Push state so browser back button fires popstate
+    window.history.pushState({ page: p }, '', window.location.pathname);
+  };
+  const goBack = () => {
+    if (pageHistory.length > 0) {
+      const prev = pageHistory[pageHistory.length - 1];
+      setPageHistory(h => h.slice(0, -1));
+      setPageRaw(prev);
+      LS.set('tesla_page', prev);
+      window.scrollTo(0, 0);
+    }
+  };
 
   const renderPage = () => {
     if (!appReady) return (
@@ -3464,7 +3538,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme }}>
+    <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme, goBack }}>
       <GlobalStyle />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
       {renderPage()}
