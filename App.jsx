@@ -2510,29 +2510,42 @@ const DashboardPage = ({ setPage }) => {
               <>
                 <div className="dash-title">All Transactions</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[...payments.filter(p => p.user_id === currentUser.id).map(p => ({ ...p, type: 'deposit' })),
-                    ...investments.filter(i => i.user_id === currentUser.id).map(i => ({ ...i, type: 'investment' })),
-                    ...withdrawals.filter(w => w.user_id === currentUser.id).map(w => ({ ...w, type: 'withdrawal' }))
-                  ].sort((a, b) => new Date(b.date) - new Date(a.date)).map((tx, i) => (
-                    <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <div style={{ fontSize: 22 }}>{tx.type === 'deposit' ? '⬇️' : tx.type === 'investment' ? '📈' : '⬆️'}</div>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: 14 }}>{tx.type === 'deposit' ? 'Deposit' : tx.type === 'investment' ? `Invested in ${tx.car_name || tx.carName}` : 'Withdrawal'}</div>
-                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{tx.date} · {tx.method || tx.plan || tx.coin || ''}</div>
+                  {(() => {
+                    const txList = [
+                      ...payments.filter(p => p.user_id === currentUser.id).map(p => ({ ...p, type: 'deposit', sortDate: p.date })),
+                      ...investments.filter(i => i.user_id === currentUser.id).map(i => ({ ...i, type: 'investment', sortDate: i.date })),
+                      ...withdrawals.filter(w => w.user_id === currentUser.id).map(w => ({ ...w, type: 'withdrawal', sortDate: w.date })),
+                      ...orders.filter(o => o.user_id === currentUser.id).map(o => ({ ...o, type: 'order', amount: o.car_price || o.price || 0, sortDate: o.date })),
+                    ].sort((a, b) => new Date(b.sortDate) - new Date(a.sortDate));
+                    if (txList.length === 0) return <div className="empty-state"><div className="empty-state-icon">📋</div><p>No transactions yet.</p></div>;
+                    return txList.map((tx, i) => {
+                      const icons = { deposit: '⬇️', investment: '📈', withdrawal: '⬆️', order: '🚗' };
+                      const labels = {
+                        deposit: 'Deposit',
+                        investment: `Invested in ${tx.car_name || tx.carName || 'Portfolio Fund'}`,
+                        withdrawal: 'Withdrawal',
+                        order: `Ordered ${tx.car_name || tx.carName || 'Tesla'}`,
+                      };
+                      const colors = { deposit: 'var(--green)', investment: 'var(--text)', withdrawal: 'var(--red)', order: 'var(--red)' };
+                      const prefix = { deposit: '+', investment: '-', withdrawal: '-', order: '-' };
+                      return (
+                        <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                            <div style={{ fontSize: 22 }}>{icons[tx.type]}</div>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 14 }}>{labels[tx.type]}</div>
+                              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{tx.date} · {tx.method || tx.plan || tx.coin || tx.status || ''}</div>
+                              {tx.tracking_id && <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--red)', marginTop: 2 }}>🔍 {tx.tracking_id}</div>}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 700, color: colors[tx.type] }}>{prefix[tx.type]}${Number(tx.amount).toLocaleString()}</div>
+                            <span className={`badge ${tx.status === 'Approved' || tx.status === 'Active' || tx.status === 'Delivered' ? 'badge-green' : tx.status === 'Rejected' || tx.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`} style={{ fontSize: 10 }}>{tx.status || 'Pending'}</span>
+                          </div>
                         </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 700, color: tx.type === 'deposit' ? 'var(--green)' : tx.type === 'withdrawal' ? 'var(--red)' : 'var(--text)' }}>
-                          {tx.type === 'deposit' ? '+' : '-'}${Number(tx.amount).toLocaleString()}
-                        </div>
-                        <span className={`badge ${tx.status === 'Approved' || tx.status === 'Active' ? 'badge-green' : tx.status === 'Rejected' || tx.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`} style={{ fontSize: 10 }}>{tx.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {payments.filter(p => p.user_id === currentUser.id).length === 0 && investments.filter(i => i.user_id === currentUser.id).length === 0 && (
-                    <div className="empty-state"><div className="empty-state-icon">📋</div><p>No transactions yet.</p></div>
-                  )}
+                      );
+                    });
+                  })()}
                 </div>
               </>
             )}
@@ -2758,18 +2771,19 @@ const AdminPanel = ({ setPage }) => {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-                                <span style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700 }}>{ord.carName}</span>
-                                <span className={`badge ${ord.status === 'Confirmed' ? 'badge-green' : ord.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`}>{ord.status}</span>
+                                <span style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700 }}>{ord.car_name || ord.carName}</span>
+                                <span className={`badge ${ord.status === 'Delivered' ? 'badge-green' : ord.status === 'Confirmed' ? 'badge-blue' : ord.status === 'Cancelled' ? 'badge-red' : 'badge-gold'}`}>{ord.status}</span>
+                                {ord.tracking_id && <span style={{ fontSize: 11, fontFamily: 'monospace', background: 'rgba(227,25,55,0.12)', border: '1px solid rgba(227,25,55,0.3)', borderRadius: 5, padding: '2px 7px', color: 'var(--red)', fontWeight: 700 }}>🔍 {ord.tracking_id}</span>}
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, fontSize: 13 }}>
-                                <div><span style={{ color: 'var(--muted)' }}>Customer: </span><strong>{u?.name || ord.fullName}</strong></div>
+                                <div><span style={{ color: 'var(--muted)' }}>Customer: </span><strong>{u?.name || ord.full_name || ord.fullName}</strong></div>
                                 <div><span style={{ color: 'var(--muted)' }}>Email: </span><span>{u?.email || ord.email}</span></div>
                                 <div><span style={{ color: 'var(--muted)' }}>Phone: </span><span>{ord.phone}</span></div>
-                                <div><span style={{ color: 'var(--muted)' }}>Price: </span><strong style={{ color: 'var(--red)' }}>${Number(ord.carPrice).toLocaleString()}</strong></div>
-                                <div><span style={{ color: 'var(--muted)' }}>Color: </span><span>{ord.color}</span></div>
+                                <div><span style={{ color: 'var(--muted)' }}>Price: </span><strong style={{ color: 'var(--red)' }}>${Number(ord.car_price || ord.carPrice || ord.price || 0).toLocaleString()}</strong></div>
+                                <div><span style={{ color: 'var(--muted)' }}>Color: </span><span>{ord.color || 'N/A'}</span></div>
                                 <div><span style={{ color: 'var(--muted)' }}>Date: </span><span>{ord.date}</span></div>
                               </div>
-                              <div style={{ fontSize: 13, marginTop: 8 }}><span style={{ color: 'var(--muted)' }}>Delivery Address: </span><span>{ord.address}</span></div>
+                              <div style={{ fontSize: 13, marginTop: 8 }}><span style={{ color: 'var(--muted)' }}>Delivery Address: </span><span>{ord.address || 'N/A'}</span></div>
                               {ord.notes && <div style={{ fontSize: 13, marginTop: 4 }}><span style={{ color: 'var(--muted)' }}>Notes: </span><span>{ord.notes}</span></div>}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 120 }}>
@@ -3142,9 +3156,20 @@ export default function App() {
 
   // Handle browser/phone back button
   useEffect(() => {
-    // Push initial state
     window.history.pushState({ page }, '', window.location.pathname);
-    const handlePop = () => goBack();
+    const handlePop = (e) => {
+      e.preventDefault();
+      if (pageHistoryRef.current.length > 0) {
+        const prev = pageHistoryRef.current[pageHistoryRef.current.length - 1];
+        pageHistoryRef.current = pageHistoryRef.current.slice(0, -1);
+        setPageHistory([...pageHistoryRef.current]);
+        setPageRaw(prev);
+        LS.set('tesla_page', prev);
+        window.scrollTo(0, 0);
+        // Push a new state so back button keeps working
+        window.history.pushState({ page: prev }, '', window.location.pathname);
+      }
+    };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
   }, []);
@@ -3492,23 +3517,27 @@ export default function App() {
   const noFooterPages = ['login', 'register', 'admin_login', 'admin', 'dashboard', 'kyc'];
 
   const [pageHistory, setPageHistory] = useState([]);
+  const pageHistoryRef = React.useRef([]);
+
   const setPage = (p) => {
-    setPageHistory(prev => [...prev.slice(-19), page]);
+    pageHistoryRef.current = [...pageHistoryRef.current.slice(-19), page];
+    setPageHistory([...pageHistoryRef.current]);
     setPageRaw(p);
     LS.set('tesla_page', p);
     window.scrollTo(0, 0);
-    // Push state so browser back button fires popstate
     window.history.pushState({ page: p }, '', window.location.pathname);
   };
-  const goBack = () => {
-    if (pageHistory.length > 0) {
-      const prev = pageHistory[pageHistory.length - 1];
-      setPageHistory(h => h.slice(0, -1));
+
+  const goBack = React.useCallback(() => {
+    if (pageHistoryRef.current.length > 0) {
+      const prev = pageHistoryRef.current[pageHistoryRef.current.length - 1];
+      pageHistoryRef.current = pageHistoryRef.current.slice(0, -1);
+      setPageHistory([...pageHistoryRef.current]);
       setPageRaw(prev);
       LS.set('tesla_page', prev);
       window.scrollTo(0, 0);
     }
-  };
+  }, []);
 
   const renderPage = () => {
     if (!appReady) return (
@@ -3541,6 +3570,7 @@ export default function App() {
     <AppContext.Provider value={{ cars, setCars, users, investments, payments, orders, withdrawals, broadcasts, notifications, kyc, allKyc, currentUser, adminLoggedIn, setAdminLoggedIn, login, register, logout, addInvestment, addPayment, updatePaymentStatus: updatePaymentStatusWithNotif, addOrder, updateOrderStatus: updateOrderStatusWithNotif, addWithdrawal, updateWithdrawalStatus: updateWithdrawalStatusWithNotif, addBroadcast, deleteBroadcast, pushNotification, markNotificationRead, markAllRead, deleteNotification, submitKyc, updateKycStatus, showToast, appReady, theme, setTheme, goBack }}>
       <GlobalStyle />
       {!noNavPages.includes(page) && appReady && <Navbar page={page} setPage={setPage} />}
+      {appReady && currentUser && <BroadcastBanner />}
       {renderPage()}
       {!noFooterPages.includes(page) && appReady && <Footer setPage={setPage} />}
       <Toast msg={toast.msg} type={toast.type} />
